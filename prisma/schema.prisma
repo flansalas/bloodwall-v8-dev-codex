@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  COLLABORATOR
+  ADMIN
+}
+
+enum UDEStatus {
+  DEFINED
+  ACTIVE
+  VERIFIED
+  CLOSED
+}
+
+enum ActionStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  DONE
+}
+
+model Company {
+  id             Int          @id @default(autoincrement())
+  name           String
+  logoUrl        String?
+  currency       String       @default("USD")
+  costImpactScale String      @default("YEAR") // YEAR | MONTH | WEEK
+  mamDayOfWeek   Int?         // 0–6
+  mamTime        String?      // "09:00"
+  categories     Category[]
+  team           TeamMember[]
+  udes           UDE[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId Int
+  udes      UDE[]
+}
+
+model TeamMember {
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String   @unique
+  role      Role     @default(COLLABORATOR)
+  avatarUrl String?
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId Int
+  ownedUDEs UDE[]    @relation("OwnerUDEs")
+  actions   Action[]
+}
+
+model UDE {
+  id         Int         @id @default(autoincrement())
+  title      String
+  costImpact Int
+  status     UDEStatus   @default(DEFINED)
+  dueDate    DateTime?
+  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  companyId  Int
+  owner      TeamMember? @relation("OwnerUDEs", fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerId    Int?
+  category   Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  categoryId Int?
+  actions    Action[]
+  metrics    Metric[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+model Action {
+  id          Int          @id @default(autoincrement())
+  description String
+  status      ActionStatus @default(NOT_STARTED)
+  dueDate     DateTime?
+  ude         UDE          @relation(fields: [udeId], references: [id], onDelete: Cascade)
+  udeId       Int
+  assignee    TeamMember?  @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  assigneeId  Int?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Metric {
+  id         Int      @id @default(autoincrement())
+  name       String
+  baseline   Float?
+  goal       Float?
+  current    Float?
+  reportsJson Json?   // array of {date,value}
+  ude        UDE      @relation(fields: [udeId], references: [id], onDelete: Cascade)
+  udeId      Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
