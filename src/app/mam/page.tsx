@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { buttonClasses } from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import UDEDetailCard from "@/components/UDEDetailCard";
-import { useUDEs, type UDE } from "@/lib/udeStore";
+import { MamSummary, useUDEs, type UDE } from "@/lib/udeStore";
+import { loadSeedData } from "@/lib/seed";
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-US", {
@@ -31,9 +33,15 @@ type DecisionOutcome = {
 const ownerInitial = (owner: string) => owner.trim().charAt(0).toUpperCase() || "?";
 
 const MamModePage = () => {
+  const router = useRouter();
   const udes = useUDEs((state) => state.udes);
   const getDueThisWeek = useUDEs((state) => state.getDueThisWeek);
   const addLog = useUDEs((state) => state.addLog);
+  const recordMamSummary = useUDEs((state) => state.recordMamSummary);
+
+  useEffect(() => {
+    loadSeedData();
+  }, []);
 
   const agenda = useMemo(() => {
     const due = getDueThisWeek();
@@ -45,7 +53,7 @@ const MamModePage = () => {
 
   const [selectedId, setSelectedId] = useState<string | null>(agenda[0]?.id ?? null);
   const [decisions, setDecisions] = useState<Record<string, DecisionOutcome>>({});
-  const [summaryLogged, setSummaryLogged] = useState(false);
+  const [summarySent, setSummarySent] = useState(false);
 
   useEffect(() => {
     if (agenda.length === 0) {
@@ -75,72 +83,58 @@ const MamModePage = () => {
 
   const showSummary = totalAgenda > 0 && reviewedCount >= totalAgenda;
 
-  const verifiedCount = Object.values(decisions).filter((item) => item.decision === "verify").length;
-  const needsWorkCount = Object.values(decisions).filter((item) => item.decision === "needs-work").length;
-  const keepActiveCount = Object.values(decisions).filter((item) => item.decision === "keep-active").length;
-  const newCount = udes.filter((ude) => ude.status === "Defined").length;
-
   const costEliminated = udes.filter((ude) => ude.status === "Verified").reduce((acc, ude) => acc + ude.costImpact, 0);
   const costAtRisk = udes.filter((ude) => ude.status === "Defined" || ude.status === "Active").reduce((acc, ude) => acc + ude.costImpact, 0);
 
-  const statusBanner = useMemo(() => {
-    if (verifiedCount > needsWorkCount) {
-      return {
-        label: "Accountability Improving",
-        gradient: "from-emerald-500 via-blue-500 to-sky-500",
-        sub: "More wins than risks this cycle.",
-      };
-    }
-    if (verifiedCount === needsWorkCount) {
-      return {
-        label: "Signal Weak",
-        gradient: "from-amber-400 via-orange-400 to-rose-400",
-        sub: "Momentum is flat. Rally the team next week.",
-      };
-    }
-    return {
-      label: "Accountability At Risk",
-      gradient: "from-rose-500 via-rose-600 to-red-500",
-      sub: "More issues than wins. Unblock the loop.",
-    };
-  }, [verifiedCount, needsWorkCount]);
-
-  const verifiedByOwner = useMemo(() => {
-    const tally: Record<string, number> = {};
+  useEffect(() => {
+    if (!showSummary || summarySent) return;
+    const reviewedOwners: Record<string, number> = {};
     Object.values(decisions).forEach((outcome) => {
-      if (outcome.decision !== "verify") return;
       const match = udes.find((ude) => ude.id === outcome.id);
       if (!match) return;
-      tally[match.owner] = (tally[match.owner] ?? 0) + 1;
-    });
-    return tally;
-  }, [decisions, udes]);
-
-  const actionStats = useMemo(() =>
-    udes.reduce(
-      (acc, ude) => {
-        ude.actions.forEach((action) => {
-          if (action.status === "Done") acc.done += 1;
-          else acc.outstanding += 1;
-        });
-        return acc;
-      },
-      { done: 0, outstanding: 0 },
-    ),
-  [udes]);
-
-  const totalActionsReviewed = actionStats.done + actionStats.outstanding;
-  const actionCompletionPct = totalActionsReviewed === 0 ? 0 : Math.round((actionStats.done / totalActionsReviewed) * 100);
-
-  useEffect(() => {
-    if (!showSummary || summaryLogged) return;
-    Object.values(decisions).forEach((outcome) => {
+      reviewedOwners[match.owner] = (reviewedOwners[match.owner] ?? 0) + 1;
       if (outcome.decision === "keep-active") {
         addLog(outcome.id, "Reviewed during MAM – remains active");
       }
     });
-    setSummaryLogged(true);
-  }, [showSummary, summaryLogged, decisions, addLog]);
+
+    const summary: MamSummary = {
+      timestamp: new Date().toISOString(),
+      agendaTotal: totalAgenda,
+      reviewed: reviewedCount,
+      verified: Object.values(decisions).filter((item) => item.decision === "verify").length,
+      keptActive: Object.values(decisions).filter((item) => item.decision === "keep-active").length,
+      needsWork: Object.values(decisions).filter((item) => item.decision === "needs-work").length,
+      newLogged: udes.filter((ude) => ude.status === "Defined").length,
+      costEliminated,
+      costAtRisk,
+      reviewedOwners,
+      actionsCompleted: udes.reduce(
+        (total, ude) => total + ude.actions.filter((action) => action.status === "Done").length,
+        0,
+      ),
+      actionsOutstanding: udes.reduce(
+        (total, ude) => total + ude.actions.filter((action) => action.status !== "Done").length,
+        0,
+      ),
+    };
+
+    recordMamSummary(summary);
+    setSummarySent(true);
+    router.push("/mam/summary");
+  }, [
+    showSummary,
+    summarySent,
+    decisions,
+    totalAgenda,
+    reviewedCount,
+    costEliminated,
+    costAtRisk,
+    router,
+    recordMamSummary,
+    udes,
+    addLog,
+  ]);
 
   return (
     <div className="min-h-screen bg-slate-50 px-6 py-10 text-slate-900">
@@ -158,65 +152,8 @@ const MamModePage = () => {
       </Card>
 
       {showSummary ? (
-        <Card className="space-y-8 rounded-[32px] p-8">
-          <div className={`rounded-full bg-gradient-to-r ${statusBanner.gradient} px-8 py-6 text-white shadow-lg`}>
-            <h2 className="text-2xl font-semibold">{statusBanner.label}</h2>
-            <p className="text-sm text-white/80">{statusBanner.sub}</p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryTile tone="blue" label="Verified" value={verifiedCount} />
-            <SummaryTile tone="amber" label="Kept Active" value={keepActiveCount} />
-            <SummaryTile tone="rose" label="Needs Work" value={needsWorkCount} />
-            <SummaryTile tone="slate" label="New UDEs" value={newCount} />
-          </div>
-
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Card className="space-y-4 rounded-[28px] border border-slate-200">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Team Breakdown</h3>
-              {Object.keys(verifiedByOwner).length === 0 ? (
-                <p className="text-sm text-slate-500">No verified wins recorded this session.</p>
-              ) : (
-                <table className="w-full table-fixed text-left text-sm text-slate-600">
-                  <tbody>
-                    {Object.entries(verifiedByOwner).map(([owner, count]) => (
-                      <tr key={owner} className="border-t border-slate-200">
-                        <td className="py-3 font-medium text-slate-800">{owner}</td>
-                        <td>
-                          <Badge tone="verified">{count} closed</Badge>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </Card>
-            <Card className="space-y-4 rounded-[28px] border border-slate-200">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Actions Summary</h3>
-              <p className="text-sm text-slate-600">
-                {actionStats.done} completed • {actionStats.outstanding} outstanding ({actionCompletionPct}% complete)
-              </p>
-              <div className="h-2 rounded-full bg-slate-200">
-                <div className="h-2 rounded-full bg-blue-500" style={{ width: `${actionCompletionPct}%` }} />
-              </div>
-              <p className="text-xs text-slate-400">{totalActionsReviewed} total actions reviewed.</p>
-            </Card>
-          </div>
-
-          <Card className="space-y-3 rounded-[28px] border border-slate-200">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Trendline</h3>
-            <p className="text-sm text-slate-600">
-              Cost eliminated {formatCurrency(costEliminated)} vs {formatCurrency(costAtRisk)} remaining risk.
-            </p>
-            <div className="h-32 rounded-[24px] bg-gradient-to-r from-slate-100 via-white to-slate-100" />
-          </Card>
-
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Badge tone="default" className="bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-500">
-              Eliminated {formatCurrency(costEliminated)} • At Risk {formatCurrency(costAtRisk)}
-            </Badge>
-            <Link href="/" className={buttonClasses("primary", "sm")}>Return to Dashboard</Link>
-          </div>
+        <Card className="space-y-6 rounded-[32px] p-8 text-center text-slate-600">
+          <p className="text-sm">Summary ready. Redirecting…</p>
         </Card>
       ) : (
         <div className="flex flex-col gap-6 lg:flex-row">
@@ -290,19 +227,3 @@ const MamModePage = () => {
 };
 
 export default MamModePage;
-
-const SummaryTile = ({ tone, label, value }: { tone: "blue" | "amber" | "rose" | "slate"; label: string; value: number }) => {
-  const toneClasses: Record<typeof tone, string> = {
-    blue: "bg-blue-50 text-blue-700",
-    amber: "bg-amber-50 text-amber-700",
-    rose: "bg-rose-50 text-rose-700",
-    slate: "bg-slate-100 text-slate-700",
-  } as Record<typeof tone, string>;
-
-  return (
-    <div className={`rounded-2xl px-5 py-4 text-center ${toneClasses[tone]}`}>
-      <p className="text-3xl font-semibold">{value}</p>
-      <p className="text-xs uppercase tracking-wide opacity-80">{label}</p>
-    </div>
-  );
-};

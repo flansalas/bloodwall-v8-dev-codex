@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CSSProperties, useMemo, useState } from "react";
+import { CSSProperties, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   DndContext,
@@ -26,6 +26,7 @@ import {
   getProgressToGoal,
   useUDEs,
 } from "@/lib/udeStore";
+import { loadSeedData } from "@/lib/seed";
 
 const CATEGORY_OPTIONS = ["Sales", "Ops", "Finance", "People", "Revenue", "Support", "Product"] as const;
 
@@ -228,8 +229,14 @@ const WallPage = () => {
   const udes = useUDEs((state) => state.udes);
   const forwardStatus = useUDEs((state) => state.forwardStatus);
 
+  useEffect(() => {
+    loadSeedData();
+  }, []);
+
+  const ownerParam = searchParams.get("owner");
+
   const [categoryFilter, setCategoryFilter] = useState("ALL");
-  const [ownerFilter, setOwnerFilter] = useState("ALL");
+  const [ownerFilter, setOwnerFilter] = useState(() => ownerParam ?? "ALL");
   const [searchTerm, setSearchTerm] = useState("");
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -241,14 +248,35 @@ const WallPage = () => {
     }),
   );
 
+  useEffect(() => {
+    setOwnerFilter(ownerParam ?? "ALL");
+  }, [ownerParam]);
+
   const owners = useMemo(() => {
     const unique = Array.from(new Set(udes.map((ude) => ude.owner))).filter(Boolean);
     return unique.sort((a, b) => a.localeCompare(b));
   }, [udes]);
 
   const statusParam = searchParams.get("status");
+  const filterParam = searchParams.get("filter");
 
   const allowedStatuses = useMemo(() => {
+    if (filterParam) {
+      const mapping: Record<string, UDEStatus> = {
+        defined: "Defined",
+        active: "Active",
+        verified: "Verified",
+        closed: "Closed",
+      };
+      const requested = filterParam
+        .split(/[,+]/)
+        .map((token) => token.trim().toLowerCase())
+        .map((token) => mapping[token])
+        .filter((status): status is UDEStatus => Boolean(status));
+      if (requested.length > 0) {
+        return UDE_STATUSES.filter((status) => requested.includes(status));
+      }
+    }
     if (!statusParam) return UDE_STATUSES;
     const requested = statusParam
       .split(",")
@@ -256,7 +284,7 @@ const WallPage = () => {
       .filter((status): status is UDEStatus => (UDE_STATUSES as readonly string[]).includes(status));
     if (requested.length === 0) return UDE_STATUSES;
     return UDE_STATUSES.filter((status) => requested.includes(status));
-  }, [statusParam]);
+  }, [statusParam, filterParam]);
 
   const filteredUDEs = useMemo(() => {
     const search = searchTerm.trim().toLowerCase();

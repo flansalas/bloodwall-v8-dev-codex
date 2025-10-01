@@ -1,9 +1,10 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useMemo, useState } from "react";
-import Button from "@/components/Button";
-import Card from "@/components/Card";
-import { useUDEs, type CreateUDEInput } from "../lib/udeStore";
+import Button, { buttonClasses } from "@/components/ui/Button";
+import Card from "@/components/ui/Card";
+import Input from "@/components/ui/Input";
+import { useUDEs, type CreateUDEInput } from "@/lib/udeStore";
 
 type QuickAddUDEProps = {
   open: boolean;
@@ -19,9 +20,15 @@ const EMPTY_FORM = {
   dueDate: "",
 };
 
+const DEFAULT_CATEGORIES = ["Sales", "Ops", "Finance", "People"];
+
 const QuickAddUDE = ({ open, onClose }: QuickAddUDEProps) => {
   const totalUDEs = useUDEs((state) => state.udes.length);
   const addUDE = useUDEs((state) => state.addUDE);
+  const companyCategories = useUDEs((state) => state.company.categories);
+  const companyTeam = useUDEs((state) => state.company.team);
+  const categories = useMemo(() => (companyCategories.length > 0 ? companyCategories : DEFAULT_CATEGORIES), [companyCategories]);
+  const owners = useMemo(() => (companyTeam.length > 0 ? companyTeam : ["Owner"]), [companyTeam]);
   const [form, setForm] = useState(EMPTY_FORM);
 
   const isDisabled = useMemo(() => {
@@ -79,107 +86,117 @@ const QuickAddUDE = ({ open, onClose }: QuickAddUDEProps) => {
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-black/30">
+    <div className="fixed inset-0 z-40 flex justify-end bg-slate-900/40 backdrop-blur-sm">
       <aside className="flex h-full w-full max-w-md flex-col">
-        <Card className="flex h-full flex-col gap-6 overflow-y-auto">
-        <header className="mb-6 flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-semibold">Quick Add UDE</h2>
-            <p className="text-sm text-gray-500">Total UDEs tracked: {totalUDEs}</p>
-          </div>
-          <Button variant="secondary" size="sm" onClick={handleClose}>
-            Close
-          </Button>
-        </header>
-
-        <form onSubmit={handleSubmit} className="flex flex-1 flex-col gap-5">
-          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
-            Title
-            <input
-              required
-              name="title"
-              value={form.title}
-              onChange={handleChange}
-              className="rounded-md border border-gray-300 px-3 py-2 text-base shadow-sm focus:border-blue-500 focus:outline-none"
-              placeholder="Describe the undesirable effect"
-            />
-          </label>
-
-          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
-            Metric to Track
-            <input
-              required
-              name="metricName"
-              value={form.metricName}
-              onChange={handleChange}
-              className="rounded-md border border-gray-300 px-3 py-2 text-base shadow-sm focus:border-blue-500 focus:outline-none"
-              placeholder="e.g. AR Days, Close Rate %, Scrap Rate, Safety Incidents"
-            />
-          </label>
-
-          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
-            Owner
-            <input
-              required
-              name="owner"
-              value={form.owner}
-              onChange={handleChange}
-              className="rounded-md border border-gray-300 px-3 py-2 text-base shadow-sm focus:border-blue-500 focus:outline-none"
-              placeholder="Who is accountable?"
-            />
-          </label>
-
-          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
-            Category
-            <input
-              required
-              name="category"
-              value={form.category}
-              onChange={handleChange}
-              className="rounded-md border border-gray-300 px-3 py-2 text-base shadow-sm focus:border-blue-500 focus:outline-none"
-              placeholder="e.g. People, Finance"
-            />
-          </label>
-
-          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
-            Cost Impact ($)
-            <input
-              name="costImpact"
-              value={form.costImpact}
-              onChange={handleChange}
-              className="rounded-md border border-gray-300 px-3 py-2 text-base shadow-sm focus:border-blue-500 focus:outline-none"
-              placeholder="Estimated cost impact"
-              type="number"
-              min="0"
-              step="0.01"
-            />
-          </label>
-
-          <label className="flex flex-col gap-2 text-sm font-medium text-gray-700">
-            Due Date
-            <input
-              name="dueDate"
-              value={form.dueDate}
-              onChange={handleChange}
-              className="rounded-md border border-gray-300 px-3 py-2 text-base shadow-sm focus:border-blue-500 focus:outline-none"
-              type="date"
-            />
-          </label>
-
-          <div className="mt-auto flex gap-3">
-            <Button
-              type="button"
-              variant="secondary"
-              className="flex-1"
-              onClick={handleClose}
-            >
-              Cancel
+        <Card className="flex h-full flex-col gap-6 overflow-y-auto rounded-[36px]">
+          <header className="sticky top-0 flex items-center justify-between rounded-[28px] bg-white/90 p-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Quick Add UDE</h2>
+              <p className="text-xs uppercase tracking-wide text-slate-400">Total tracked · {totalUDEs}</p>
+            </div>
+            <Button variant="ghost" size="sm" onClick={handleClose}>
+              Close
             </Button>
-            <Button type="submit" className="flex-1" disabled={isDisabled}>
-              Save
-            </Button>
-          </div>
-        </form>
+          </header>
+
+          <form onSubmit={handleSubmit} className="flex flex-1 flex-col gap-5 p-4">
+            <label className="space-y-2 text-sm font-medium text-slate-600">
+              <span>Title</span>
+              <Input
+                required
+                name="title"
+                value={form.title}
+                onChange={handleChange}
+                placeholder="Undesirable effect to capture"
+              />
+            </label>
+
+            <label className="space-y-2 text-sm font-medium text-slate-600">
+              <span>Metric to Track</span>
+              <Input
+                required
+                name="metricName"
+                value={form.metricName}
+                onChange={handleChange}
+                placeholder="e.g. AR Days, Scrap Rate"
+              />
+            </label>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-2 text-sm font-medium text-slate-600">
+                <span>Owner</span>
+                <select
+                  required
+                  name="owner"
+                  value={form.owner}
+                  onChange={(event) =>
+                    setForm((prev) => ({ ...prev, owner: event.target.value }))
+                  }
+                  className="w-full rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm text-slate-700 shadow-sm focus:border-blue-400 focus:outline-none"
+                >
+                  <option value="" disabled>
+                    Select owner
+                  </option>
+                  {owners.map((owner) => (
+                    <option key={owner} value={owner}>
+                      {owner}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="space-y-2 text-sm font-medium text-slate-600">
+                <span>Category</span>
+                <div className="flex flex-wrap gap-2">
+                  {categories.map((category) => {
+                    const isActive = form.category === category;
+                    return (
+                      <button
+                        key={category}
+                        type="button"
+                        onClick={() => setForm((prev) => ({ ...prev, category }))}
+                        className={buttonClasses(isActive ? "primary" : "outline", "sm", "px-4")}
+                      >
+                        {category}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-2 text-sm font-medium text-slate-600">
+                <span>Cost Impact ($)</span>
+                <Input
+                  name="costImpact"
+                  value={form.costImpact}
+                  onChange={handleChange}
+                  placeholder="Estimated annual impact"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                />
+              </label>
+              <label className="space-y-2 text-sm font-medium text-slate-600">
+                <span>Due Date</span>
+                <Input name="dueDate" value={form.dueDate} onChange={handleChange} type="date" />
+              </label>
+            </div>
+
+            <div className="mt-auto flex gap-3 pt-4">
+              <Button
+                type="button"
+                variant="ghost"
+                className="flex-1"
+                onClick={handleClose}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="flex-1" disabled={isDisabled}>
+                Save UDE
+              </Button>
+            </div>
+          </form>
         </Card>
       </aside>
     </div>
