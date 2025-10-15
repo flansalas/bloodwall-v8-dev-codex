@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from "next/server"
 import { updateAction } from '@/lib/udeStore'
 import { ActionStatus } from '@prisma/client'
 
@@ -10,9 +10,10 @@ const parseId = (value: string) => {
   return id
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: Request, ctx: any) {
+  const id = ctx?.params?.id as string
   try {
-    const id = parseId(params.id)
+    const parsedId = parseId(id)
     const body = await request.json()
 
     const payload: Record<string, unknown> = {}
@@ -26,7 +27,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     }
     if ('dueDate' in body) payload.dueDate = body.dueDate
 
-    const action = await updateAction(id, payload)
+    const action = await updateAction(parsedId, payload)
     return NextResponse.json(action)
   } catch (error) {
     console.error('[PATCH /api/actions/:id]', error)
