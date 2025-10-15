@@ -1,4 +1,6 @@
-"use client";
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const fetchCache = 'force-no-store';
 
 import Link from "next/link";
 import { CSSProperties, Suspense, useEffect, useMemo, useState } from "react";
@@ -27,9 +29,6 @@ import {
   getProgressToGoal,
   useUDEs,
 } from "@/lib/udeClientStore";
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 const CATEGORY_OPTIONS = ["Sales", "Ops", "Finance", "People", "Revenue", "Support", "Product"] as const;
 
@@ -238,6 +237,7 @@ const WallColumn = ({
 };
 
 function PageInner(props: any) {
+  "use client";
   const router = useRouter();
   const searchParams = useSearchParams();
   const udes = useUDEs((state) => state.udes);
