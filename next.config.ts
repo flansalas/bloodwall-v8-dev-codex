@@ -1,10 +1,12 @@
 export default {
   /* config options here */
-  experimental: {
-    outputFileTracingIncludes: {
-      // Include our local SQLite + schema in all functions
-      '/**': ['./prisma/dev.db', './prisma/schema.prisma'],
-    },
+  outputFileTracingIncludes: {
+    '*': [
+      'node_modules/.prisma/client/**/*',
+      'node_modules/@prisma/client/**/*',
+      'prisma/schema.prisma',
+      'prisma/dev.db',
+    ],
   },
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
