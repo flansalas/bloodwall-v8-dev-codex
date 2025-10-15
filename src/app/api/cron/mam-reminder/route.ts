@@ -17,7 +17,14 @@ function mamReminderHtml(companyName: string, ctaHref: string) {
 }
 
 export async function POST(request: Request) {
-  if (isReadOnly()) {
+  const expectedSecret = process.env.CRON_SECRET?.trim();
+  const headerSecret = request.headers.get("x-cron-secret")?.trim();
+  const querySecret = new URL(request.url).searchParams.get("secret")?.trim();
+  const hasValidSecret =
+    expectedSecret !== undefined &&
+    (headerSecret === expectedSecret || querySecret === expectedSecret);
+
+  if (isReadOnly() && !hasValidSecret) {
     return NextResponse.json(
       { error: "Read-only mode: writes are disabled on this deployment." },
       { status: 403 }
