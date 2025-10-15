@@ -1,14 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { buttonClasses } from "@/components/ui/Button";
+import BackToDashboardButton from "@/components/BackToDashboardButton";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import UDEDetailCard from "@/components/UDEDetailCard";
-import { MamSummary, useUDEs, type UDE } from "@/lib/udeStore";
-import { loadSeedData } from "@/lib/seed";
+import { MamSummary, useUDEs, type UDE } from "@/lib/udeClientStore";
+import type { UDEStatus as ApiUDEStatus } from "@/types/api";
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-US", {
@@ -17,7 +16,7 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value);
 
-const formatDate = (value?: string) => {
+const formatDate = (value?: string | null) => {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -30,6 +29,13 @@ type DecisionOutcome = {
   status: UDE["status"];
 };
 
+const statusFromApi: Record<ApiUDEStatus, UDE["status"]> = {
+  DEFINED: "Defined",
+  ACTIVE: "Active",
+  VERIFIED: "Verified",
+  CLOSED: "Closed",
+};
+
 const ownerInitial = (owner: string) => owner.trim().charAt(0).toUpperCase() || "?";
 
 const MamModePage = () => {
@@ -38,10 +44,6 @@ const MamModePage = () => {
   const getDueThisWeek = useUDEs((state) => state.getDueThisWeek);
   const addLog = useUDEs((state) => state.addLog);
   const recordMamSummary = useUDEs((state) => state.recordMamSummary);
-
-  useEffect(() => {
-    loadSeedData();
-  }, []);
 
   const agenda = useMemo(() => {
     const due = getDueThisWeek();
@@ -71,10 +73,63 @@ const MamModePage = () => {
 
   const selectedUde = useMemo(() => agenda.find((ude) => ude.id === selectedId) ?? null, [agenda, selectedId]);
 
-  const handleDecision = (decision: "verify" | "keep-active" | "needs-work", status: UDE["status"]) => {
+  const actionsDueThisWeek = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const startOfWeek = new Date(today);
+    const day = startOfWeek.getDay(); // 0 (Sun) - 6 (Sat)
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    startOfWeek.setDate(startOfWeek.getDate() + diffToMonday);
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(endOfWeek.getDate() + 6);
+    endOfWeek.setHours(23, 59, 59, 999);
+
+    const msPerDay = 24 * 60 * 60 * 1000;
+
+    return udes
+      .flatMap((ude) =>
+        ude.actions.map((action) => ({
+          ude,
+          action,
+        })),
+      )
+      .filter(({ action }) => action.status.toLowerCase() !== "done")
+      .filter(({ action }) => {
+        if (!action.dueDate) return false;
+        const due = new Date(action.dueDate);
+        if (Number.isNaN(due.getTime())) return false;
+        return due >= startOfWeek && due <= endOfWeek;
+      })
+      .map(({ ude, action }) => {
+        const due = new Date(action.dueDate ?? "");
+        due.setHours(0, 0, 0, 0);
+        const dueInDays = Math.round((due.getTime() - today.getTime()) / msPerDay);
+        return {
+          id: action.id,
+          text: action.text,
+          owner: action.owner,
+          udeTitle: ude.title,
+          dueDate: action.dueDate ?? "",
+          dueInDays,
+          overdue: due.getTime() < today.getTime(),
+        };
+      })
+      .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+  }, [udes]);
+
+  const handleDecision = (decision: "verify" | "keep-active" | "needs-work", status: ApiUDEStatus) => {
     if (!selectedUde) return;
     setDecisions((prev) => {
-      const next = { ...prev, [selectedUde.id]: { id: selectedUde.id, decision, status } };
+      const next = {
+        ...prev,
+        [selectedUde.id]: {
+          id: selectedUde.id,
+          decision,
+          status: statusFromApi[status],
+        },
+      };
       const remaining = agenda.find((ude) => !next[ude.id]);
       setSelectedId(remaining?.id ?? null);
       return next;
@@ -147,7 +202,7 @@ const MamModePage = () => {
           <Badge tone="active" className="text-sm font-semibold">
             {progressLabel}
           </Badge>
-          <Link href="/" className={buttonClasses("outline", "sm")}>Dashboard</Link>
+          <BackToDashboardButton />
         </div>
       </Card>
 
@@ -212,11 +267,54 @@ const MamModePage = () => {
           <main className="flex-1">
             <Card className="rounded-[32px] p-6">
               {selectedUde ? (
-                <UDEDetailCard udeId={selectedUde.id} showDecisionFooter onDecision={handleDecision} lockTargets disableEditing={false} />
+                <UDEDetailCard
+                  udeId={Number(selectedUde.id)}
+                  showDecisionFooter
+                  onDecision={handleDecision}
+                  lockTargets
+                  disableEditing={false}
+                />
               ) : (
                 <div className="rounded-[24px] bg-slate-100 px-6 py-12 text-center text-sm text-slate-500">
                   Select a UDE from the agenda to review.
                 </div>
+              )}
+            </Card>
+            <Card className="mt-6 rounded-[32px] p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">Actions due this week</h2>
+                  <p className="text-sm text-slate-500">Focus on actions scheduled before Sunday.</p>
+                </div>
+                <Badge tone="default" className="text-xs font-semibold uppercase tracking-wide">
+                  {actionsDueThisWeek.length} open
+                </Badge>
+              </div>
+              {actionsDueThisWeek.length === 0 ? (
+                <p className="mt-6 text-sm text-slate-500">No actions due this week.</p>
+              ) : (
+                <ul className="mt-6 space-y-3">
+                  {actionsDueThisWeek.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 px-4 py-3"
+                    >
+                      <div className="space-y-1">
+                        <p className="font-medium text-slate-900">{item.text}</p>
+                        <p className="text-xs uppercase tracking-wide text-slate-500">
+                          {item.udeTitle} · {item.owner}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 text-right text-xs text-slate-500">
+                        {item.overdue && <Badge tone="danger">Overdue</Badge>}
+                        <div className="space-y-1">
+                          <p>Due {formatDate(item.dueDate)}</p>
+                          <p className="font-semibold text-slate-700">Due in {item.dueInDays} days</p>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               )}
             </Card>
           </main>

@@ -16,6 +16,7 @@ import {
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import QuickAddUDE from "@/components/QuickAddUDE";
+import BackToDashboardButton from "@/components/BackToDashboardButton";
 import { buttonClasses } from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -25,8 +26,7 @@ import {
   type UDEStatus,
   getProgressToGoal,
   useUDEs,
-} from "@/lib/udeStore";
-import { loadSeedData } from "@/lib/seed";
+} from "@/lib/udeClientStore";
 
 const CATEGORY_OPTIONS = ["Sales", "Ops", "Finance", "People", "Revenue", "Support", "Product"] as const;
 
@@ -82,7 +82,18 @@ const isOverdue = (dueDate: string) => {
   return due < today;
 };
 
-const DueDatePill = ({ due }: { due: string }) => {
+const formatDueDate = (value?: string | null) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+};
+
+const DueDatePill = ({ due }: { due: string | null }) => {
   if (!due) return null;
   const overdue = isOverdue(due);
   return (
@@ -93,7 +104,7 @@ const DueDatePill = ({ due }: { due: string }) => {
         "px-3 py-1 text-xs font-semibold capitalize" + (overdue ? "" : " text-slate-600")
       )}
     >
-      {overdue ? "Overdue" : "Due"} {due}
+      {overdue ? "Overdue" : "Due"} {formatDueDate(due)}
     </span>
   );
 };
@@ -229,10 +240,6 @@ const WallPage = () => {
   const udes = useUDEs((state) => state.udes);
   const forwardStatus = useUDEs((state) => state.forwardStatus);
 
-  useEffect(() => {
-    loadSeedData();
-  }, []);
-
   const ownerParam = searchParams.get("owner");
 
   const [categoryFilter, setCategoryFilter] = useState("ALL");
@@ -364,7 +371,7 @@ const WallPage = () => {
           <p className="text-xs uppercase tracking-[0.3em] text-slate-400">Wall</p>
           <h1 className="text-2xl font-semibold text-slate-900">Accountability Loop</h1>
         </div>
-        <Link href="/" className={buttonClasses("outline", "sm")}>Dashboard</Link>
+        <BackToDashboardButton />
       </header>
 
       <div className="mb-8 flex flex-wrap items-center gap-4 rounded-[34px] border border-slate-200 bg-white/80 p-4 shadow-sm">

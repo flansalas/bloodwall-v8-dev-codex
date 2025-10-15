@@ -2,10 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
+import BackToDashboardButton from "@/components/BackToDashboardButton";
 import Button, { buttonClasses } from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
-import { useUDEs, type SetupPayload } from "@/lib/udeStore";
+import { useUDEs, type SetupPayload } from "@/lib/udeClientStore";
 
 const STEPS = [
   "Company",
@@ -108,6 +109,11 @@ const SetupPage = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 px-6 py-16 text-slate-900">
       <div className="mx-auto flex max-w-3xl flex-col items-center gap-8 text-center">
+        <div className="w-full">
+          <div className="flex justify-end">
+            <BackToDashboardButton className="ml-auto" />
+          </div>
+        </div>
         <header className="space-y-3">
           <p className="text-xs uppercase tracking-[0.4em] text-slate-400">Setup Wizard</p>
           <h1 className="text-3xl font-semibold tracking-tight">Launch your Bloodwall loop</h1>

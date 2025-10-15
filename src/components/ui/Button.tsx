@@ -1,48 +1,39 @@
 import clsx from "clsx";
 import { ButtonHTMLAttributes, PropsWithChildren } from "react";
 
-export type ButtonVariant = "primary" | "success" | "warning" | "danger" | "outline" | "ghost";
+type Variant = "primary" | "outline" | "ghost";
+type Size = "sm" | "md" | "lg";
 
-type ButtonProps = PropsWithChildren<
-  ButtonHTMLAttributes<HTMLButtonElement> & {
-    variant?: ButtonVariant;
-    size?: "sm" | "md" | "lg";
-  }
->;
+export function buttonClasses(
+  variant: Variant = "primary",
+  size: Size = "md",
+  ...extras: string[]
+) {
+  const base =
+    "inline-flex items-center justify-center rounded-full font-medium transition active:scale-[.98] disabled:opacity-50 disabled:pointer-events-none";
+  const variants: Record<Variant, string> = {
+    primary: "bg-blue-600 text-white hover:bg-blue-700",
+    outline: "border border-slate-300 text-slate-800 hover:bg-slate-50",
+    ghost: "text-slate-700 hover:bg-slate-100",
+  };
+  const sizes: Record<Size, string> = {
+    sm: "text-sm px-3 py-1.5",
+    md: "text-sm px-4 py-2",
+    lg: "text-base px-5 py-2.5",
+  };
+  return clsx(base, variants[variant], sizes[size], extras);
+}
 
-const variantStyles: Record<ButtonVariant, string> = {
-  primary: "bg-blue-600 text-white hover:bg-blue-500",
-  success: "bg-emerald-600 text-white hover:bg-emerald-500",
-  warning: "bg-amber-500 text-slate-900 hover:bg-amber-400",
-  danger: "bg-rose-600 text-white hover:bg-rose-500",
-  outline: "border border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:text-slate-900",
-  ghost: "bg-transparent text-slate-600 hover:bg-slate-100",
+type ButtonProps = PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement>> & {
+  variant?: Variant;
+  size?: Size;
 };
 
-const sizeStyles: Record<NonNullable<ButtonProps["size"]>, string> = {
-  sm: "px-4 py-2 text-xs",
-  md: "px-5 py-2.5 text-sm",
-  lg: "px-6 py-3 text-base",
-};
-
-export const buttonClasses = (
-  variant: ButtonVariant = "primary",
-  size: NonNullable<ButtonProps["size"]> = "md",
-  className?: string,
-) =>
-  clsx(
-    "inline-flex items-center justify-center gap-2 rounded-full font-semibold transition",
-    "focus:outline-none focus-visible:ring-4 focus-visible:ring-blue-100",
-    "disabled:cursor-not-allowed disabled:opacity-60",
-    variantStyles[variant],
-    sizeStyles[size],
-    className,
-  );
-
-const Button = ({ children, variant = "primary", size = "md", className, ...props }: ButtonProps) => (
-  <button className={buttonClasses(variant, size, className)} {...props}>
-    {children}
-  </button>
-);
-
-export default Button;
+export default function Button({
+  variant = "primary",
+  size = "md",
+  className,
+  ...props
+}: ButtonProps) {
+  return <button className={buttonClasses(variant, size, className || "")} {...props} />;
+}

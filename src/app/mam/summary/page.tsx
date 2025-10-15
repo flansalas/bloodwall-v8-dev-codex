@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
+import BackToDashboardButton from "@/components/BackToDashboardButton";
 import { buttonClasses } from "@/components/ui/Button";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
-import { useUDEs } from "@/lib/udeStore";
-import { loadSeedData } from "@/lib/seed";
+import { useUDEs, type MamSummary } from "@/lib/udeClientStore";
 
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -19,11 +19,7 @@ const SummaryPage = () => {
   const company = useUDEs((state) => state.company);
   const udes = useUDEs((state) => state.udes);
 
-  useEffect(() => {
-    loadSeedData();
-  }, []);
-
-  const fallbackSummary = useMemo(() => {
+  const fallbackSummary = useMemo<MamSummary>(() => {
     const costEliminated = udes.filter((ude) => ude.status === "Verified").reduce((acc, ude) => acc + ude.costImpact, 0);
     const costAtRisk = udes.filter((ude) => ude.status === "Defined" || ude.status === "Active").reduce((acc, ude) => acc + ude.costImpact, 0);
     return {
@@ -36,7 +32,7 @@ const SummaryPage = () => {
       newLogged: udes.filter((ude) => ude.status === "Defined").length,
       costEliminated,
       costAtRisk,
-      reviewedOwners: {},
+      reviewedOwners: {} as Record<string, number>,
       actionsCompleted: udes.reduce(
         (total, ude) => total + ude.actions.filter((action) => action.status === "Done").length,
         0,
@@ -45,7 +41,7 @@ const SummaryPage = () => {
         (total, ude) => total + ude.actions.filter((action) => action.status !== "Done").length,
         0,
       ),
-    };
+    } as MamSummary;
   }, [udes]);
 
   const data = summary ?? fallbackSummary;
@@ -82,7 +78,7 @@ const SummaryPage = () => {
           <h1 className="text-3xl font-semibold tracking-tight">{company.name} Accountability Pulse</h1>
           <p className="mt-2 text-sm text-slate-500">Session completed {new Date(data.timestamp).toLocaleString()}</p>
         </div>
-        <Link href="/" className={buttonClasses("primary", "sm")}>Return to Dashboard</Link>
+        <BackToDashboardButton variant="primary" />
       </header>
 
       <Card className={`mb-6 flex flex-wrap items-center justify-between gap-6 rounded-[36px] bg-gradient-to-br ${bannerGradient} p-8 text-white shadow-[0_60px_120px_-80px_rgba(15,23,42,0.8)]`}>
@@ -194,7 +190,7 @@ const SummaryPage = () => {
         <Link href="/wall" className={buttonClasses("outline", "sm")}>
           ← Back to Wall
         </Link>
-        <Link href="/" className={buttonClasses("primary", "sm")}>Close Summary</Link>
+        <BackToDashboardButton variant="primary" label="Close Summary" />
       </div>
     </div>
   );

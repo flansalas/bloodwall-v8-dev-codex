@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import BackToDashboardButton from "@/components/BackToDashboardButton";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Input from "@/components/ui/Input";
 import Button, { buttonClasses } from "@/components/ui/Button";
-import { ACTION_STATUSES, getProgressToGoal, useUDEs, type Action, type UDE } from "@/lib/udeStore";
+import { ACTION_STATUSES, getProgressToGoal, useUDEs, type Action, type UDE } from "@/lib/udeClientStore";
 
 const today = () => {
   const date = new Date();
@@ -52,9 +53,13 @@ const MePage = () => {
           <h1 className="text-3xl font-semibold tracking-tight">My Accountability</h1>
           <p className="text-sm text-slate-500">Update your UDEs before the meeting</p>
         </div>
-        <Badge tone={updatedCount === cardData.length ? "verified" : "active"}>
-          {updatedCount} of {cardData.length} updated
-        </Badge>
+
+        <div className="flex items-center gap-3">
+          <Badge tone={updatedCount === cardData.length ? "verified" : "active"}>
+            {updatedCount} of {cardData.length} updated
+          </Badge>
+          <BackToDashboardButton />
+        </div>
       </header>
 
       {company.team.length > 1 && (
@@ -111,7 +116,9 @@ const MePage = () => {
         <Button variant="primary" size="sm" disabled={markAllDisabled} onClick={handleMarkAllUpdated}>
           Mark all updated
         </Button>
-        <Link href={`/wall?owner=${encodeURIComponent(owner)}`} className={buttonClasses("outline", "sm")}>Open UDE Wall (filtered to me)</Link>
+        <Link href={`/wall?owner=${encodeURIComponent(owner)}`} className={buttonClasses("outline", "sm")}>
+          Open UDE Wall (filtered to me)
+        </Link>
       </footer>
     </div>
   );
@@ -120,7 +127,7 @@ const MePage = () => {
 export default MePage;
 
 const SummaryPill = ({ label, value, tone }: { label: string; value: number; tone: "danger" | "active" | "verified" }) => {
-  const toneClasses: Record<typeof tone, string> = {
+  const toneClasses: Record<"danger" | "active" | "verified", string> = {
     danger: "bg-rose-50 text-rose-700",
     active: "bg-blue-50 text-blue-700",
     verified: "bg-emerald-50 text-emerald-700",
@@ -145,7 +152,7 @@ const OwnerCard = ({
   const [currentValue, setCurrentValue] = useState(ude.current.toString());
   const [note, setNote] = useState("");
   const [selectedActionId, setSelectedActionId] = useState<string>("none");
-  const [selectedStatus, setSelectedStatus] = useState(ACTION_STATUSES[0]);
+  const [selectedStatus, setSelectedStatus] = useState<Action["status"]>(ACTION_STATUSES[0]);
 
   const progress = getProgressToGoal(ude);
 
@@ -177,7 +184,13 @@ const OwnerCard = ({
     <Card className="rounded-[36px] p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">{ude.title}</h2>
+          <button
+            type="button"
+            className="text-left text-lg font-semibold text-slate-900 hover:text-blue-600"
+            onClick={() => window.open(`/wall/${ude.id}`, "_blank")}
+          >
+            {ude.title}
+          </button>
           <p className="text-xs text-slate-500">Metric · {ude.metricName}</p>
         </div>
         <Badge tone={getBadgeTone(state)}>{labelForState(state)}</Badge>
@@ -323,7 +336,7 @@ const currency = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value);
 
-const formatDate = (value?: string) => {
+const formatDate = (value?: string | null) => {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
