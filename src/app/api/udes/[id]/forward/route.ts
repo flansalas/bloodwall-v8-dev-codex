@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isReadOnly } from '@/lib/runtimeFlags'
 import { forwardStatus } from '@/lib/udeStore'
 import { UDEStatus } from '@prisma/client'
 
@@ -11,6 +12,12 @@ const parseId = (value: string) => {
 }
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+  if (isReadOnly()) {
+    return NextResponse.json(
+      { error: 'Read-only mode: writes are disabled on this deployment.' },
+      { status: 403 }
+    )
+  }
   try {
     const id = parseId(params.id)
     const body = await request.json()

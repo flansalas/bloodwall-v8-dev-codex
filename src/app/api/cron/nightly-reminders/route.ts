@@ -1,3 +1,4 @@
+import { isReadOnly } from "@/lib/runtimeFlags";
 import { NextResponse } from "next/server";
 import { requireCronAuth } from "@/lib/cronAuth";
 import { sendEmail } from "@/lib/mailer";
@@ -6,6 +7,12 @@ import { personalReminderHtml } from "@/templates/reminders";
 import { getPendingForEmail } from "@/lib/pending";
 
 export async function POST(request: Request) {
+  if (isReadOnly()) {
+    return NextResponse.json(
+      { error: "Read-only mode: writes are disabled on this deployment." },
+      { status: 403 }
+    );
+  }
   const guard = requireCronAuth(request);
   if (guard) return guard;
 

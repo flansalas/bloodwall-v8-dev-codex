@@ -1,3 +1,4 @@
+import { isReadOnly } from "@/lib/runtimeFlags";
 import { NextResponse } from "next/server";
 
 function mamReminderHtml(companyName: string, ctaHref: string) {
@@ -16,6 +17,12 @@ function mamReminderHtml(companyName: string, ctaHref: string) {
 }
 
 export async function POST(request: Request) {
+  if (isReadOnly()) {
+    return NextResponse.json(
+      { error: "Read-only mode: writes are disabled on this deployment." },
+      { status: 403 }
+    );
+  }
   try {
     const body = await request.json().catch(() => ({} as any));
     const companyName =

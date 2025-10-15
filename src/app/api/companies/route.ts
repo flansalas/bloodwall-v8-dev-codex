@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isReadOnly } from '@/lib/runtimeFlags'
 import { Role } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getCompanyProfile, resolveCompanyId } from '@/lib/companyService'
@@ -24,6 +25,12 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  if (isReadOnly()) {
+    return NextResponse.json(
+      { error: 'Read-only mode: writes are disabled on this deployment.' },
+      { status: 403 }
+    )
+  }
   try {
     const body = await request.json()
     const company = await prisma.company.create({
@@ -84,6 +91,12 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  if (isReadOnly()) {
+    return NextResponse.json(
+      { error: 'Read-only mode: writes are disabled on this deployment.' },
+      { status: 403 }
+    )
+  }
   try {
     const body = await request.json()
     const companyId = await resolveCompanyId(body.companyId)

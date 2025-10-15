@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server"
+import { isReadOnly } from "@/lib/runtimeFlags"
 import { magicLinkFor } from "@/lib/magic"
 import { sendEmail } from "@/lib/mailer"
 
 const DEFAULT_EMAIL = "you@example.com"
 
 export async function POST(request: NextRequest) {
+  if (isReadOnly()) {
+    return NextResponse.json(
+      { error: "Read-only mode: writes are disabled on this deployment." },
+      { status: 403 }
+    )
+  }
   try {
     const body = await request.json().catch(() => ({}))
     const requestedEmail = typeof body?.to === "string" ? body.to.trim() : ""
@@ -32,4 +39,3 @@ export async function POST(request: NextRequest) {
     )
   }
 }
-
