@@ -1,15 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { requireCronAuth } from "@/lib/cronAuth";
 import { sendEmail } from "@/lib/mailer";
 import { magicLinkFor } from "@/lib/magic";
 import { personalReminderHtml } from "@/templates/reminders";
 import { getPendingForEmail } from "@/lib/pending";
 
-export async function POST(req: NextRequest) {
-  const guard = requireCronAuth(req);
+export async function POST(request: Request) {
+  const guard = requireCronAuth(request);
   if (guard) return guard;
 
-  const body = await req.json().catch(() => ({}));
+  const body = await request.json().catch(() => ({}));
   const name = body.name || "Teammate";
   const envRedirect = process.env.EMAIL_REDIRECT?.trim();
   const to = envRedirect || body.to || "you@example.com";
