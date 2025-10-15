@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CSSProperties, useEffect, useMemo, useState } from "react";
+import { CSSProperties, Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   DndContext,
@@ -27,6 +27,9 @@ import {
   getProgressToGoal,
   useUDEs,
 } from "@/lib/udeClientStore";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const CATEGORY_OPTIONS = ["Sales", "Ops", "Finance", "People", "Revenue", "Support", "Product"] as const;
 
@@ -234,7 +237,7 @@ const WallColumn = ({
   );
 };
 
-const WallPage = () => {
+function PageInner(props: any) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const udes = useUDEs((state) => state.udes);
@@ -481,9 +484,15 @@ const WallPage = () => {
       <QuickAddUDE open={isQuickAddOpen} onClose={() => setIsQuickAddOpen(false)} />
     </div>
   );
-};
+}
 
-export default WallPage;
+export default function PageWrapper(props: any) {
+  return (
+    <Suspense fallback={null}>
+      <PageInner {...props} />
+    </Suspense>
+  );
+}
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
