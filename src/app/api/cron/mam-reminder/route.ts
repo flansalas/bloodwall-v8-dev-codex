@@ -1,4 +1,4 @@
-export function mamReminderHtml(companyName: string, ctaHref: string) {
+function mamReminderHtml(companyName: string, ctaHref: string) {
   return `
     <html>
       <body>
@@ -10,7 +10,7 @@ export function mamReminderHtml(companyName: string, ctaHref: string) {
   `;
 }
 
-export function personalReminderHtml(name: string, items: any[], ctaHref: string) {
+function personalReminderHtml(name: string, items: any[], ctaHref: string) {
   return `
     <html>
       <body>
