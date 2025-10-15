@@ -1,11 +1,9 @@
 export default {
   /* config options here */
   outputFileTracingIncludes: {
-    '*': [
-      'node_modules/.prisma/client/**/*',
-      'node_modules/@prisma/client/**/*',
-      'prisma/schema.prisma',
-      'prisma/dev.db',
+    "/**/*": [
+      "node_modules/.prisma/client/**",
+      "prisma/**",
     ],
   },
   eslint: { ignoreDuringBuilds: true },
