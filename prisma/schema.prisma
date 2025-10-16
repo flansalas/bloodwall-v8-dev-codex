@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
@@ -27,23 +28,23 @@ enum ActionStatus {
 }
 
 model Company {
-  id                    Int           @id @default(autoincrement())
-  name                  String
-  logoUrl               String?
-  industry              String?
-  loopStatement         String?
-  rhythmCadence         String?
-  rhythmDay             String?
-  rhythmTime            String?
-  currency              String?       @default("USD")
-  reviewWindow          String?
-  addOnAiCoach          Boolean       @default(false)
-  lastSetupCompletedAt  DateTime?
-  createdAt             DateTime      @default(now())
-  updatedAt             DateTime      @updatedAt
-  categories            Category[]
-  teamMembers           TeamMember[]
-  udes                  UDE[]
+  id                   Int          @id @default(autoincrement())
+  name                 String
+  logoUrl              String?
+  industry             String?
+  loopStatement        String?
+  rhythmCadence        String?
+  rhythmDay            String?
+  rhythmTime           String?
+  currency             String?      @default("USD")
+  reviewWindow         String?
+  addOnAiCoach         Boolean      @default(false)
+  lastSetupCompletedAt DateTime?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  categories           Category[]
+  teamMembers          TeamMember[]
+  udes                 UDE[]
 }
 
 model Category {
@@ -58,17 +59,17 @@ model Category {
 }
 
 model TeamMember {
-  id         Int        @id @default(autoincrement())
-  name       String
-  email      String?    @unique
-  role       Role       @default(COLLAB)
-  avatarUrl  String?
-  companyId  Int
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  ownedUDEs  UDE[]      @relation("UDEOwner")
-  actions    Action[]
+  id        Int      @id @default(autoincrement())
+  name      String
+  email     String?  @unique
+  role      Role     @default(COLLAB)
+  avatarUrl String?
+  companyId Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  ownedUDEs UDE[]    @relation("UDEOwner")
+  actions   Action[]
 
   @@unique([companyId, name])
 }
