@@ -1,5 +1,5 @@
-import { isReadOnly } from "@/lib/runtimeFlags";
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
+import { isReadOnly, withCronBypass } from '@/lib/runtimeFlags';
 
 function mamReminderHtml(companyName: string, ctaHref: string) {
   return `
@@ -16,53 +16,71 @@ function mamReminderHtml(companyName: string, ctaHref: string) {
   `;
 }
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
-  const expectedSecret = process.env.CRON_SECRET?.trim();
-  const headerSecret = request.headers.get("x-cron-secret")?.trim();
-  const querySecret = new URL(request.url).searchParams.get("secret")?.trim();
-  const hasValidSecret =
-    expectedSecret !== undefined &&
-    (headerSecret === expectedSecret || querySecret === expectedSecret);
-
-  if (isReadOnly() && !hasValidSecret) {
-    return NextResponse.json(
-      { error: "Read-only mode: writes are disabled on this deployment." },
-      { status: 403 }
-    );
-  }
   try {
-    const body = await request.json().catch(() => ({} as any));
-    const companyName =
-      typeof body?.companyName === "string" && body.companyName.trim()
-        ? body.companyName
-        : "Bloodwall";
+    if (isReadOnly(request)) {
+      return NextResponse.json(
+        { error: 'Read-only mode: writes are disabled on this deployment.' },
+        { status: 403 }
+      );
+    }
 
-    const base = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-    const ctaHref = `${base}/`;
+    return await withCronBypass(request, async () => {
+      try {
+        const body = await request.json().catch(() => ({} as any));
+        const companyName =
+          typeof body?.companyName === 'string' && body.companyName.trim()
+            ? body.companyName
+            : 'Bloodwall';
 
-    const html = mamReminderHtml(companyName, ctaHref);
+        const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        const ctaHref = `${base}/`;
 
-    // during testing everything goes to EMAIL_REDIRECT
-    const to = process.env.EMAIL_REDIRECT || "flansalas@yahoo.com";
-    const fromEmail = process.env.FROM_EMAIL || "no-reply@bloodwall.local";
-    const fromName = process.env.FROM_NAME || "Bloodwall";
+        const html = mamReminderHtml(companyName, ctaHref);
 
-    const { sendMail } = await import("@/lib/mailer");
+        // during testing everything goes to EMAIL_REDIRECT
+        const to = process.env.EMAIL_REDIRECT || 'flansalas@yahoo.com';
+        const fromEmail = process.env.FROM_EMAIL || 'no-reply@bloodwall.local';
+        const fromName = process.env.FROM_NAME || 'Bloodwall';
 
-    const result = await sendMail({
-      to,
-      subject: `[Bloodwall] MAM Reminder — ${companyName}`,
-      html,
-      text: `Weekly review is coming up. Open your dashboard: ${ctaHref}`,
-      fromEmail,
-      fromName,
+        const { sendMail } = await import('@/lib/mailer');
+
+        const result = await sendMail({
+          to,
+          subject: `[Bloodwall] MAM Reminder — ${companyName}`,
+          html,
+          text: `Weekly review is coming up. Open your dashboard: ${ctaHref}`,
+          fromEmail,
+          fromName,
+        });
+
+        return NextResponse.json({ ok: true, sentTo: 1, to, ...result });
+      } catch (err: any) {
+        return NextResponse.json(
+          { ok: false, error: String(err?.message ?? err) },
+          { status: 500 }
+        );
+      }
     });
-
-    return NextResponse.json({ ok: true, sentTo: 1, to, ...result });
-  } catch (err: any) {
+  } catch (e: any) {
+    if (e?.message === '__CRON_FORBIDDEN__') {
+      return NextResponse.json(
+        { ok: false, error: 'Forbidden' },
+        { status: 403 }
+      );
+    }
     return NextResponse.json(
-      { ok: false, error: String(err?.message ?? err) },
+      { ok: false, error: 'Internal Error' },
       { status: 500 }
     );
   }
+}
+
+export async function GET() {
+  return NextResponse.json(
+    { ok: false, error: 'Method Not Allowed' },
+    { status: 405 }
+  );
 }
