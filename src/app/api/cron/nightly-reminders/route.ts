@@ -9,19 +9,52 @@ import { getPendingForEmail } from '@/lib/pending';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  const cronSecret = process.env.CRON_SECRET ?? '';
+  const headerSecret = request.headers.get('x-cron-secret') ?? '';
+  const querySecret = new URL(request.url).searchParams.get('secret') ?? '';
+
+  if (!cronSecret || (headerSecret !== cronSecret && querySecret !== cronSecret)) {
+    return NextResponse.json(
+      { ok: false, error: 'forbidden' },
+      { status: 403 }
+    );
+  }
+
+  if (process.env.READ_ONLY === '1') {
+    return NextResponse.json(
+      {
+        ok: true,
+        skipped: true,
+        reason: 'READ_ONLY: dry-run on serverless sqlite',
+      },
+      { status: 200 }
+    );
+  }
+
+  const authorizedRequest =
+    headerSecret === cronSecret
+      ? request
+      : new Request(request, {
+          headers: (() => {
+            const headers = new Headers(request.headers);
+            headers.set('x-cron-secret', cronSecret);
+            return headers;
+          })(),
+        });
+
   try {
-    if (isReadOnly(request)) {
+    if (isReadOnly(authorizedRequest)) {
       return NextResponse.json(
         { error: 'Read-only mode: writes are disabled on this deployment.' },
         { status: 403 }
       );
     }
 
-    return await withCronBypass(request, async () => {
-      const guard = requireCronAuth(request);
+    return await withCronBypass(authorizedRequest, async () => {
+      const guard = requireCronAuth(authorizedRequest);
       if (guard) return guard;
 
-      const body = await request.json().catch(() => ({}));
+      const body = await authorizedRequest.json().catch(() => ({}));
       const name = body.name || 'Teammate';
       const envRedirect = process.env.EMAIL_REDIRECT?.trim();
       const to = envRedirect || body.to || 'you@example.com';

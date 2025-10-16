@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { isReadOnly, withCronBypass } from '@/lib/runtimeFlags';
 
+export const dynamic = 'force-dynamic';
+
 function mamReminderHtml(companyName: string, ctaHref: string) {
   return `
     <html>
@@ -16,9 +18,29 @@ function mamReminderHtml(companyName: string, ctaHref: string) {
   `;
 }
 
-export const dynamic = 'force-dynamic';
-
 export async function POST(request: Request) {
+  const cronSecret = process.env.CRON_SECRET ?? '';
+  const headerSecret = request.headers.get('x-cron-secret') ?? '';
+  const querySecret = new URL(request.url).searchParams.get('secret') ?? '';
+
+  if (!cronSecret || (headerSecret !== cronSecret && querySecret !== cronSecret)) {
+    return NextResponse.json(
+      { ok: false, error: 'forbidden' },
+      { status: 403 }
+    );
+  }
+
+  if (process.env.READ_ONLY === '1') {
+    return NextResponse.json(
+      {
+        ok: true,
+        skipped: true,
+        reason: 'READ_ONLY: dry-run on serverless sqlite',
+      },
+      { status: 200 }
+    );
+  }
+
   try {
     if (isReadOnly(request)) {
       return NextResponse.json(
