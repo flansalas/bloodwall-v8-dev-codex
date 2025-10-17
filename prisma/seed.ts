@@ -1,180 +1,159 @@
-import { PrismaClient, Role, UDEStatus, ActionStatus } from '@prisma/client'
+import { ActionStatus, PrismaClient, Role, UDEStatus } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
-const addDays = (days: number) => {
-  const date = new Date()
-  date.setHours(0, 0, 0, 0)
-  date.setDate(date.getDate() + days)
-  return date
-}
-
-export async function main() {
-  try {
-    await prisma.activityLog.deleteMany()
-    await prisma.action.deleteMany()
-    await prisma.metric.deleteMany()
-    await prisma.uDE.deleteMany()
-    await prisma.teamMember.deleteMany()
-    await prisma.category.deleteMany()
-    await prisma.company.deleteMany()
-
-    const company = await prisma.company.create({
-      data: {
-        name: 'Demo Company',
-        logoUrl: null,
-        industry: 'Consulting',
-        loopStatement: 'We eliminate waste weekly.',
-        rhythmCadence: 'Weekly',
-        rhythmDay: 'Monday',
-        rhythmTime: '09:00',
-        currency: 'USD',
-      },
-    })
-
-    const [salesCategory, opsCategory, financeCategory, peopleCategory] = await Promise.all([
-      prisma.category.create({ data: { name: 'Sales', companyId: company.id } }),
-      prisma.category.create({ data: { name: 'Ops', companyId: company.id } }),
-      prisma.category.create({ data: { name: 'Finance', companyId: company.id } }),
-      prisma.category.create({ data: { name: 'People', companyId: company.id } }),
-    ])
-
-    const [alice, bob, charlie] = await Promise.all([
-      prisma.teamMember.create({
-        data: {
-          name: 'Alice',
-          email: 'alice@demo-company.com',
-          role: Role.OWNER,
-          companyId: company.id,
-        },
-      }),
-      prisma.teamMember.create({
-        data: {
-          name: 'Bob',
-          email: 'bob@demo-company.com',
-          role: Role.ADMIN,
-          companyId: company.id,
-        },
-      }),
-      prisma.teamMember.create({
-        data: {
-          name: 'Charlie',
-          email: 'charlie@demo-company.com',
-          role: Role.COLLAB,
-          companyId: company.id,
-        },
-      }),
-    ])
-
-    const udes = [
-      {
-        title: 'Late AR Collections',
-        status: UDEStatus.ACTIVE,
-        ownerId: alice.id,
-        categoryId: financeCategory.id,
-        costImpact: 50000,
-        dueDate: addDays(14),
-        metrics: [
-          {
-            name: 'AR Days',
-            baseline: 60,
-            goal: 45,
-            current: 55,
-            lastWeek: 57,
-          },
-        ],
-        actions: [
-          {
-            text: 'Call top 5 overdue accounts',
-            status: ActionStatus.IN_PROGRESS,
-            ownerId: alice.id,
-            dueDate: addDays(5),
-          },
-          {
-            text: 'Send reminder emails',
-            status: ActionStatus.NOT_STARTED,
-            ownerId: bob.id,
-            dueDate: addDays(3),
-          },
-        ],
-        logs: ['UDE created with AR Days = 60', 'Metric updated to 57'],
-      },
-      {
-        title: 'Job Costing Errors',
-        status: UDEStatus.DEFINED,
-        ownerId: bob.id,
-        categoryId: opsCategory.id,
-        costImpact: 20000,
-        dueDate: addDays(21),
-        metrics: [
-          {
-            name: 'Job Cost Accuracy',
-            baseline: 70,
-            goal: 95,
-            current: 70,
-            lastWeek: 70,
-          },
-        ],
-        actions: [],
-        logs: ['Baseline job costing accuracy captured at 70%.'],
-      },
-      {
-        title: 'Slow Invoicing',
-        status: UDEStatus.VERIFIED,
-        ownerId: charlie.id,
-        categoryId: salesCategory.id,
-        costImpact: 30000,
-        dueDate: addDays(7),
-        metrics: [
-          {
-            name: 'Invoice Lag Days',
-            baseline: 14,
-            goal: 2,
-            current: 2,
-            lastWeek: 3,
-          },
-        ],
-        actions: [],
-        logs: ['UDE moved to Verified'],
-      },
-    ]
-
-    for (const ude of udes) {
-      await prisma.uDE.create({
-        data: {
-          title: ude.title,
-          status: ude.status,
-          ownerId: ude.ownerId,
-          categoryId: ude.categoryId,
-          companyId: company.id,
-          costImpact: ude.costImpact,
-          dueDate: ude.dueDate,
-          metrics: {
-            create: ude.metrics,
-          },
-          actions: {
-            create: ude.actions,
-          },
-          activityLog: {
-            create: ude.logs.map((message, index) => ({
-              message,
-              timestamp: addDays(-index),
-            })),
-          },
-        },
-      })
-    }
-
-    console.log('✅ Seeded Demo Company with 3 UDEs')
-  } catch (error) {
-    console.error('❌ Failed to seed database', error)
-    throw error
-  } finally {
-    await prisma.$disconnect()
+async function main() {
+  const companyProfile = {
+    name: 'Acme, Inc.',
+    industry: 'Industrial Automation',
+    loopStatement: 'Remove bottlenecks from onboarding and daily operations.',
+    rhythmCadence: 'Weekly',
+    rhythmDay: 'Friday',
+    rhythmTime: '09:00',
+    reviewWindow: 'Last 30 days',
   }
+
+  const company = await prisma.company.upsert({
+    where: { id: 1 },
+    update: companyProfile,
+    create: {
+      id: 1,
+      ...companyProfile,
+    },
+  })
+
+  const category = await prisma.category.upsert({
+    where: { companyId_name: { companyId: company.id, name: 'Operational Excellence' } },
+    update: { name: 'Operational Excellence' },
+    create: {
+      name: 'Operational Excellence',
+      companyId: company.id,
+    },
+  })
+
+  const owner = await prisma.teamMember.upsert({
+    where: { email: 'ceo@acme.test' },
+    update: {
+      name: 'Casey CEO',
+      role: Role.OWNER,
+      companyId: company.id,
+    },
+    create: {
+      name: 'Casey CEO',
+      email: 'ceo@acme.test',
+      role: Role.OWNER,
+      companyId: company.id,
+    },
+  })
+
+  const operator = await prisma.teamMember.upsert({
+    where: { email: 'ops@acme.test' },
+    update: {
+      name: 'Olivia Ops',
+      role: Role.ADMIN,
+      companyId: company.id,
+    },
+    create: {
+      name: 'Olivia Ops',
+      email: 'ops@acme.test',
+      role: Role.ADMIN,
+      companyId: company.id,
+    },
+  })
+
+  const udeDueDate = new Date()
+  udeDueDate.setDate(udeDueDate.getDate() + 30)
+
+  const ude = await prisma.uDE.upsert({
+    where: { id: 1 },
+    update: {
+      title: 'Reduce onboarding cycle time',
+      status: UDEStatus.ACTIVE,
+      costImpact: 25000,
+      dueDate: udeDueDate,
+      ownerId: owner.id,
+      categoryId: category.id,
+      companyId: company.id,
+    },
+    create: {
+      id: 1,
+      title: 'Reduce onboarding cycle time',
+      status: UDEStatus.ACTIVE,
+      costImpact: 25000,
+      dueDate: udeDueDate,
+      ownerId: owner.id,
+      categoryId: category.id,
+      companyId: company.id,
+    },
+  })
+
+  await prisma.metric.upsert({
+    where: { id: 1 },
+    update: {
+      name: 'Time to First Value (days)',
+      baseline: 45,
+      goal: 30,
+      current: 38,
+      lastWeek: 40,
+    },
+    create: {
+      id: 1,
+      name: 'Time to First Value (days)',
+      baseline: 45,
+      goal: 30,
+      current: 38,
+      lastWeek: 40,
+      udeId: ude.id,
+    },
+  })
+
+  const actionDueDate = new Date()
+  actionDueDate.setDate(actionDueDate.getDate() + 14)
+
+  await prisma.action.upsert({
+    where: { id: 1 },
+    update: {
+      text: 'Launch refreshed onboarding welcome kit',
+      status: ActionStatus.IN_PROGRESS,
+      dueDate: actionDueDate,
+      ownerId: operator.id,
+      udeId: ude.id,
+    },
+    create: {
+      id: 1,
+      text: 'Launch refreshed onboarding welcome kit',
+      status: ActionStatus.IN_PROGRESS,
+      dueDate: actionDueDate,
+      ownerId: operator.id,
+      udeId: ude.id,
+    },
+  })
+
+  await prisma.activityLog.upsert({
+    where: { id: 1 },
+    update: {
+      message: 'Seed update: reviewed onboarding workflow and refreshed milestones.',
+      udeId: ude.id,
+    },
+    create: {
+      id: 1,
+      message: 'Seed update: reviewed onboarding workflow and refreshed milestones.',
+      udeId: ude.id,
+    },
+  })
+
+  return `Seeded company ${company.name} with category ${category.name}, team members ${owner.name} & ${operator.name}, and UDE "${ude.title}".`
 }
 
-main().catch((error) => {
-  console.error(error)
-  process.exit(1)
-})
+main()
+  .then(async (summary) => {
+    console.log(summary)
+    await prisma.$disconnect()
+    process.exit(0)
+  })
+  .catch(async (error) => {
+    console.error('Error seeding database:', error)
+    await prisma.$disconnect()
+    process.exit(1)
+  })
+
