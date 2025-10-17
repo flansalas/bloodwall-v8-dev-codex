@@ -16,10 +16,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
-  if (isReadOnly()) {
+export async function POST(request: Request) {
+  if (isReadOnly(request)) {
     return NextResponse.json(
-      { error: 'Read-only mode: writes are disabled on this deployment.' },
+      { ok: false, error: 'read_only' },
       { status: 403 }
     )
   }

@@ -1,12 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { isReadOnly } from '@/lib/runtimeFlags'
 import { addAction } from '@/lib/udeStore'
 import { ActionStatus } from '@prisma/client'
 
-export async function POST(request: NextRequest) {
-  if (isReadOnly()) {
+export async function POST(request: Request) {
+  if (isReadOnly(request)) {
     return NextResponse.json(
-      { error: 'Read-only mode: writes are disabled on this deployment.' },
+      { ok: false, error: 'read_only' },
       { status: 403 }
     )
   }

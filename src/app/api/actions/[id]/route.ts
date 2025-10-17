@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { isReadOnly } from "@/lib/runtimeFlags"
+import { isReadOnly } from "@/src/lib/runtimeFlags"
 import { updateAction } from '@/lib/udeStore'
 import { ActionStatus } from '@prisma/client'
 
@@ -12,7 +12,7 @@ const parseId = (value: string) => {
 }
 
 export async function PATCH(request: Request, ctx: any) {
-  if (isReadOnly()) {
+  if (isReadOnly(request)) {
     return NextResponse.json(
       { error: 'Read-only mode: writes are disabled on this deployment.' },
       { status: 403 }

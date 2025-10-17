@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isReadOnly } from '@/lib/runtimeFlags'
+import { isReadOnly } from '@/src/lib/runtimeFlags'
 import { getUDEById, updateUDE } from '@/lib/udeStore'
 import { UDEStatus } from '@prisma/client'
 
@@ -25,8 +25,8 @@ export async function GET(_: NextRequest, { params }: { params: { id: string } }
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  if (isReadOnly()) {
+export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+  if (isReadOnly(request)) {
     return NextResponse.json(
       { error: 'Read-only mode: writes are disabled on this deployment.' },
       { status: 403 }

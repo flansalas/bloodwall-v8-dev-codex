@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isReadOnly } from '@/lib/runtimeFlags'
+import { isReadOnly } from '@/src/lib/runtimeFlags'
 import { Role } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getCompanyProfile, resolveCompanyId } from '@/lib/companyService'
@@ -24,8 +24,8 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
-  if (isReadOnly()) {
+export async function POST(request: Request) {
+  if (isReadOnly(request)) {
     return NextResponse.json(
       { error: 'Read-only mode: writes are disabled on this deployment.' },
       { status: 403 }
@@ -90,8 +90,8 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function PATCH(request: NextRequest) {
-  if (isReadOnly()) {
+export async function PATCH(request: Request) {
+  if (isReadOnly(request)) {
     return NextResponse.json(
       { error: 'Read-only mode: writes are disabled on this deployment.' },
       { status: 403 }

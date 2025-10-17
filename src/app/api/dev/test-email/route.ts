@@ -1,12 +1,12 @@
-import { NextRequest, NextResponse } from "next/server"
-import { isReadOnly } from "@/lib/runtimeFlags"
+import { NextResponse } from "next/server"
+import { isReadOnly } from "@/src/lib/runtimeFlags"
 import { magicLinkFor } from "@/lib/magic"
 import { sendEmail } from "@/lib/mailer"
 
 const DEFAULT_EMAIL = "you@example.com"
 
-export async function POST(request: NextRequest) {
-  if (isReadOnly()) {
+export async function POST(request: Request) {
+  if (isReadOnly(request)) {
     return NextResponse.json(
       { error: "Read-only mode: writes are disabled on this deployment." },
       { status: 403 }
