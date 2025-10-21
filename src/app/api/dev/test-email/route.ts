@@ -4,12 +4,22 @@ import { magicLinkFor } from "@/lib/magic"
 import { sendEmail } from "@/lib/mailer"
 
 export const dynamic = "force-dynamic"
+export const revalidate = 0
+
 const enabled = process.env.DEV_TEST_EMAIL === "1"
 const disabled = () => new Response("Not found", { status: 404, headers: { "cache-control": "no-store" } })
 
 const DEFAULT_EMAIL = "you@example.com"
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i
 
-async function sendTestEmail(to: string): Promise<{ ok: boolean; messageId?: string; previewUrl?: string; to?: string }> {
+type SendTestEmailResult = {
+  ok: boolean
+  messageId?: string
+  previewUrl?: string
+  to?: string
+}
+
+async function sendTestEmail(to: string): Promise<SendTestEmailResult> {
   const requestedEmail = to.trim()
   const targetEmail = (process.env.EMAIL_REDIRECT || requestedEmail || DEFAULT_EMAIL).toLowerCase()
 
@@ -36,8 +46,41 @@ function readOnlyResponse() {
   )
 }
 
+function hasSession(req: NextRequest): boolean {
+  const sessionEmail = req.cookies.get("userEmail")?.value?.trim()
+  return typeof sessionEmail === "string" && sessionEmail.length > 0
+}
+
+function ensureAuthorized(req: NextRequest): NextResponse | null {
+  if (hasSession(req)) {
+    return null
+  }
+
+  const requiredKey = process.env.API_DEV_KEY ?? ""
+  const providedKey = req.headers.get("x-bw-dev-key") ?? ""
+
+  if (requiredKey && providedKey === requiredKey) {
+    return null
+  }
+
+  return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 })
+}
+
+function missingEmailResponse() {
+  return NextResponse.json({ ok: false, error: 'Missing "to"' }, { status: 400 })
+}
+
+function invalidEmailResponse() {
+  return NextResponse.json({ ok: false, error: 'Invalid "to"' }, { status: 400 })
+}
+
 export async function GET(req: NextRequest) {
   if (!enabled) return disabled()
+
+  const guard = ensureAuthorized(req)
+  if (guard) {
+    return guard
+  }
 
   if (isReadOnly(req)) {
     return readOnlyResponse()
@@ -45,15 +88,13 @@ export async function GET(req: NextRequest) {
 
   const url = new URL(req.url)
   const to = (url.searchParams.get("to") ?? "").trim()
-  const key = url.searchParams.get("key") ?? ""
-  const required = process.env.DEV_TEST_KEY ?? ""
-
-  if (required && key !== required) {
-    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 })
-  }
 
   if (!to) {
-    return NextResponse.json({ ok: false, error: 'Missing "to"' }, { status: 400 })
+    return missingEmailResponse()
+  }
+
+  if (!EMAIL_REGEX.test(to)) {
+    return invalidEmailResponse()
   }
 
   try {
@@ -71,21 +112,24 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   if (!enabled) return disabled()
 
+  const guard = ensureAuthorized(req)
+  if (guard) {
+    return guard
+  }
+
   if (isReadOnly(req)) {
     return readOnlyResponse()
   }
 
-  const body = (await req.json().catch(() => ({}))) as { to?: string; key?: string }
+  const body = (await req.json().catch(() => ({}))) as { to?: string }
   const to = (body?.to ?? "").trim()
-  const key = body?.key ?? ""
-  const required = process.env.DEV_TEST_KEY ?? ""
-
-  if (required && key !== required) {
-    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 })
-  }
 
   if (!to) {
-    return NextResponse.json({ ok: false, error: 'Missing "to"' }, { status: 400 })
+    return missingEmailResponse()
+  }
+
+  if (!EMAIL_REGEX.test(to)) {
+    return invalidEmailResponse()
   }
 
   try {
