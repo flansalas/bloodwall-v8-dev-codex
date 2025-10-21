@@ -1,22 +1,14 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { isReadOnly } from "@/src/lib/runtimeFlags"
 import { magicLinkFor } from "@/lib/magic"
 import { sendEmail } from "@/lib/mailer"
 
 const DEFAULT_EMAIL = "you@example.com"
 
-export async function POST(request: Request) {
-  if (isReadOnly(request)) {
-    return NextResponse.json(
-      { error: "Read-only mode: writes are disabled on this deployment." },
-      { status: 403 }
-    )
-  }
+async function sendTestEmail(to: string): Promise<Response> {
+  const requestedEmail = typeof to === "string" ? to.trim() : ""
+  const targetEmail = (process.env.EMAIL_REDIRECT || requestedEmail || DEFAULT_EMAIL).toLowerCase()
   try {
-    const body = await request.json().catch(() => ({}))
-    const requestedEmail = typeof body?.to === "string" ? body.to.trim() : ""
-    const targetEmail = (process.env.EMAIL_REDIRECT || requestedEmail || DEFAULT_EMAIL).toLowerCase()
-
     const magicLink = magicLinkFor(targetEmail)
     const { messageId, previewUrl } = await sendEmail({
       to: targetEmail,
@@ -39,3 +31,31 @@ export async function POST(request: Request) {
     )
   }
 }
+
+export async function POST(req: NextRequest) {
+  if (isReadOnly(req)) {
+    return NextResponse.json(
+      { error: "Read-only mode: writes are disabled on this deployment." },
+      { status: 403 }
+    )
+  }
+
+  const body = await req.json().catch(() => ({} as { to?: string }))
+  const { to } = body
+  return sendTestEmail(typeof to === "string" ? to : "")
+}
+
+export async function GET(req: NextRequest) {
+  if (isReadOnly(req)) {
+    return NextResponse.json(
+      { error: "Read-only mode: writes are disabled on this deployment." },
+      { status: 403 }
+    )
+  }
+
+  const url = new URL(req.url)
+  const address = url.searchParams.get("to") ?? ""
+  return sendTestEmail(address)
+}
+
+export const dynamic = "force-dynamic"
