@@ -1,5 +1,10 @@
 {
   "crons": [
-    { "path": "/api/cron/mam-reminder", "schedule": "0 19 * * 4" }
+    {
+      "path": "/api/cron/nightly-reminders",
+      "schedule": "0 19 * * 4",
+      "method": "POST",
+      "headers": { "x-bw-cron-key": "@CRON_SECRET" }
+    }
   ]
 }
