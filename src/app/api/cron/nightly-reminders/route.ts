@@ -1,5 +1,4 @@
-import type { NextRequest } from 'next/server'
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { isReadOnly, withCronBypass } from '@/lib/runtimeFlags'
 import { sendEmail } from '@/lib/mailer'
 import { magicLinkFor } from '@/lib/magic'
@@ -145,7 +144,9 @@ async function processNightlyReminders(request: NextRequest) {
   const execute = async () => {
     try {
       const summary = await runNightlyJob(cronAwareRequest, method)
-      return NextResponse.json({ ok: true, summary })
+      const result = { ok: true, summary }
+      console.log('[nightly-reminders] result:', JSON.stringify(result))
+      return NextResponse.json(result)
     } catch (error) {
       if (error instanceof Error && error.message === '__READ_ONLY__') {
         return cronReadOnlyResponse()
@@ -157,7 +158,8 @@ async function processNightlyReminders(request: NextRequest) {
 
   try {
     if (getCronSecret()) {
-      return await withCronBypass(cronAwareRequest, execute)
+      const response = await withCronBypass(cronAwareRequest, execute)
+      return response
     }
     return await execute()
   } catch (error) {
