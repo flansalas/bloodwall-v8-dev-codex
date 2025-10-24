@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 /**
  * Get pending items for a person by email.
  * - Pulls actions due/overdue in next 7 days and metrics not updated in 7 days.
@@ -51,7 +54,7 @@ export async function getPendingForEmail(email: string) {
     // Metrics (owner = email) considered "stale" if not updated in last 7 days
     const metricsRaw = await prisma.metric
       ?.findMany?.({
-        where: { owner: { email } },
+        where: { ude: { owner: { email } } },
         select: { id: true, name: true, title: true, updatedAt: true },
       })
       .catch(() => []);

@@ -12,10 +12,10 @@ const unauthorized = () =>
   NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
 
 const forbidden = () =>
-  NextResponse.json({ ok: false, error: 'Forbidden' }, { status: 403 })
+  NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 })
 
 const internalError = () =>
-  NextResponse.json({ ok: false, error: 'Internal Error' }, { status: 500 })
+  NextResponse.json({ ok: false, error: 'internal_error' }, { status: 500 })
 
 const readOnlyResponse = () =>
   NextResponse.json(
@@ -27,17 +27,17 @@ const readOnlyResponse = () =>
     { status: 200 }
   )
 
-function getCronSecret() {
-  return process.env.CRON_SECRET ?? ''
-}
+const cronReadOnlyResponse = () =>
+  NextResponse.json(
+    { ok: false, error: 'read_only' },
+    { status: 403 }
+  )
 
-function getDevKey() {
-  return process.env.API_DEV_KEY ?? ''
-}
+const getCronSecret = () => process.env.CRON_SECRET ?? ''
+const getDevKey = () => process.env.API_DEV_KEY ?? ''
 
 function isAuthorized(request: NextRequest) {
   const cronSecret = getCronSecret()
-
   const authHeader = request.headers.get('authorization') ?? ''
   const bearerOk = Boolean(cronSecret) && authHeader === `Bearer ${cronSecret}`
 
@@ -53,6 +53,8 @@ function isAuthorized(request: NextRequest) {
   return bearerOk || headerOk || queryOk || devOk
 }
 
+const toUpperMethod = (method?: string | null) => method?.toUpperCase() ?? 'GET'
+
 function prepareRequestWithCronSecret(request: NextRequest): Request {
   const cronSecret = getCronSecret()
   if (!cronSecret) {
@@ -64,75 +66,88 @@ function prepareRequestWithCronSecret(request: NextRequest): Request {
   return new Request(request, { headers })
 }
 
+type ReminderSummary = {
+  method: string
+  recipient: string
+  itemsQueued: number
+  sent: number
+  messageId?: string
+  previewUrl?: string
+  itemsSource: 'payload' | 'database'
+}
+
+async function runNightlyJob(cronAwareRequest: Request, method: string): Promise<ReminderSummary> {
+  if (isReadOnly(cronAwareRequest)) {
+    throw new Error('__READ_ONLY__')
+  }
+
+  const rawBody = method === 'GET' ? {} : await cronAwareRequest.json().catch(() => ({}))
+  const body = rawBody as {
+    name?: string
+    to?: string
+    items?: unknown
+  }
+
+  const name = typeof body?.name === 'string' && body.name.trim() ? body.name : 'Teammate'
+  const envRedirect = process.env.EMAIL_REDIRECT?.trim()
+  const to =
+    envRedirect && envRedirect.length > 0
+      ? envRedirect
+      : typeof body?.to === 'string' && body.to.trim()
+        ? body.to
+        : 'you@example.com'
+
+  const usingPayloadItems = Array.isArray(body?.items)
+  const items = usingPayloadItems ? (body.items as unknown[]) : await getPendingForEmail(to)
+
+  const href = magicLinkFor(to, '/me')
+  const html = personalReminderHtml(name, items, href)
+
+  const info = await sendEmail({
+    to,
+    subject: `[Bloodwall] Quick update before MAM`,
+    html,
+    text: 'Please update your UDEs before MAM.',
+  })
+
+  const summary: ReminderSummary = {
+    method,
+    recipient: to,
+    itemsQueued: Array.isArray(items) ? items.length : 0,
+    sent: 1,
+    itemsSource: usingPayloadItems ? 'payload' : 'database',
+  }
+
+  if (info.messageId) {
+    summary.messageId = info.messageId
+  }
+
+  if (info.previewUrl) {
+    summary.previewUrl = info.previewUrl
+  }
+
+  return summary
+}
+
 async function processNightlyReminders(request: NextRequest) {
   if (process.env.READ_ONLY === '1') {
     return readOnlyResponse()
   }
 
   const cronAwareRequest = prepareRequestWithCronSecret(request)
-  const method = request.method?.toUpperCase?.() ?? 'GET'
+  const method = toUpperMethod(request.method)
 
   const execute = async () => {
-    if (isReadOnly(cronAwareRequest)) {
-      return NextResponse.json(
-        { error: 'Read-only mode: writes are disabled on this deployment.' },
-        { status: 403 }
-      )
+    try {
+      const summary = await runNightlyJob(cronAwareRequest, method)
+      return NextResponse.json({ ok: true, summary })
+    } catch (error) {
+      if (error instanceof Error && error.message === '__READ_ONLY__') {
+        return cronReadOnlyResponse()
+      }
+      console.error('[cron nightly-reminders] job failed', error)
+      return internalError()
     }
-
-    const rawBody =
-      method === 'GET'
-        ? {}
-        : ((await cronAwareRequest.json().catch(() => ({}))) as Record<string, unknown>)
-
-    const body = rawBody as {
-      name?: string
-      to?: string
-      items?: unknown
-    }
-
-    const name = typeof body?.name === 'string' && body.name.trim() ? body.name : 'Teammate'
-    const envRedirect = process.env.EMAIL_REDIRECT?.trim()
-    const to =
-      envRedirect && envRedirect.length > 0
-        ? envRedirect
-        : typeof body?.to === 'string' && body.to.trim()
-          ? body.to
-          : 'you@example.com'
-
-    const items = Array.isArray(body?.items) ? body.items : await getPendingForEmail(to)
-
-    const href = magicLinkFor(to, '/me')
-    const html = personalReminderHtml(name, items, href)
-
-    const info = await sendEmail({
-      to,
-      subject: `[Bloodwall] Quick update before MAM`,
-      html,
-      text: 'Please update your UDEs before MAM.',
-    })
-
-    const result: {
-      ok: true
-      sent: number
-      to: string
-      messageId?: string
-      previewUrl?: string
-    } = {
-      ok: true,
-      sent: 1,
-      to,
-    }
-
-    if (info.messageId) {
-      result.messageId = info.messageId
-    }
-
-    if (info.previewUrl) {
-      result.previewUrl = info.previewUrl
-    }
-
-    return NextResponse.json(result)
   }
 
   try {
@@ -144,7 +159,7 @@ async function processNightlyReminders(request: NextRequest) {
     if (error instanceof Error && error.message === '__CRON_FORBIDDEN__') {
       return forbidden()
     }
-    console.error('[cron nightly-reminders] Unexpected error', error)
+    console.error('[cron nightly-reminders] unexpected error', error)
     return internalError()
   }
 }
