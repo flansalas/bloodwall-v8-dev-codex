@@ -9,6 +9,8 @@ type SendEmailPayload = {
 
 let cachedTransporter: Transporter | null = null
 let usingEthereal = false
+let transporterVerified = false
+let transporterInfo: { host: string; port: number; secure: boolean } | null = null
 
 const {
   SMTP_HOST,
@@ -28,6 +30,16 @@ async function createTransporter(): Promise<Transporter> {
   }
 
   if (smtpConfigured) {
+    if (!SMTP_HOST) {
+      throw new Error("SMTP_HOST is required when using SMTP transport")
+    }
+    if (!SMTP_USER) {
+      throw new Error("SMTP_USER is required when using SMTP transport")
+    }
+    if (!SMTP_PASS) {
+      throw new Error("SMTP_PASS is required when using SMTP transport")
+    }
+
     const parsedPort = Number.parseInt(SMTP_PORT ?? "587", 10)
     const port = Number.isNaN(parsedPort) ? 587 : parsedPort
     const secure =
@@ -37,15 +49,14 @@ async function createTransporter(): Promise<Transporter> {
       host: SMTP_HOST,
       port,
       secure,
-      auth:
-        SMTP_USER && SMTP_PASS
-          ? {
-              user: SMTP_USER,
-              pass: SMTP_PASS,
-            }
-          : undefined,
+      auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASS,
+      },
     })
     usingEthereal = false
+    transporterInfo = { host: SMTP_HOST, port, secure }
+    transporterVerified = false
     return cachedTransporter
   }
 
@@ -60,23 +71,61 @@ async function createTransporter(): Promise<Transporter> {
     },
   })
   usingEthereal = true
+  transporterInfo = {
+    host: account.smtp.host,
+    port: account.smtp.port,
+    secure: account.smtp.secure,
+  }
+  transporterVerified = false
   return cachedTransporter
 }
 
 export async function sendEmail({ to, subject, html, text }: SendEmailPayload) {
   const transporter = await createTransporter()
+
+  if (!transporterVerified) {
+    try {
+      await transporter.verify()
+      const info = transporterInfo ?? { host: "unknown", port: 0, secure: false }
+      console.info(
+        `[mailer] transporter verified host=${info.host} port=${info.port} secure=${info.secure}`
+      )
+    } catch (error) {
+      console.error("[mailer] transporter verification failed", error)
+      throw error
+    }
+    transporterVerified = true
+  }
+
   const redirectAddress = process.env.EMAIL_REDIRECT?.trim()
-  const recipient = redirectAddress && redirectAddress.length > 0 ? redirectAddress : to
+  const finalTo: string | string[] =
+    redirectAddress && redirectAddress.length > 0 ? redirectAddress : to
+
+  const recipientList = Array.isArray(finalTo) ? finalTo : [finalTo]
+  const toList = recipientList.join(", ")
+
+  const smtpUser = process.env.SMTP_USER?.trim()
+  const displayFrom =
+    process.env.MAIL_FROM?.trim() || smtpUser || FROM_EMAIL
+
+  const envelopeFrom = usingEthereal ? displayFrom : smtpUser
+
+  if (!envelopeFrom) {
+    throw new Error("Unable to determine envelope sender address")
+  }
 
   const info = await transporter.sendMail({
-    from: {
-      name: FROM_NAME,
-      address: FROM_EMAIL,
-    },
-    to: recipient,
+    from: `${FROM_NAME} <${displayFrom}>`,
+    to: toList,
     subject,
     text,
     html,
+    envelope: {
+      from: envelopeFrom,
+      to: recipientList,
+    },
+    sender: envelopeFrom,
+    replyTo: displayFrom,
   })
 
   const previewUrl = usingEthereal ? nodemailer.getTestMessageUrl(info) ?? undefined : undefined
