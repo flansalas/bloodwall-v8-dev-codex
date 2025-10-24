@@ -74,6 +74,8 @@ type ReminderSummary = {
   messageId?: string
   previewUrl?: string
   itemsSource: 'payload' | 'database'
+  actionsScanned: number
+  metricsScanned: number
 }
 
 async function runNightlyJob(cronAwareRequest: Request, method: string): Promise<ReminderSummary> {
@@ -98,7 +100,8 @@ async function runNightlyJob(cronAwareRequest: Request, method: string): Promise
         : 'you@example.com'
 
   const usingPayloadItems = Array.isArray(body?.items)
-  const items = usingPayloadItems ? (body.items as unknown[]) : await getPendingForEmail(to)
+  const pending = usingPayloadItems ? null : await getPendingForEmail(to)
+  const items = usingPayloadItems ? (body.items as unknown[]) : pending?.items ?? []
 
   const href = magicLinkFor(to, '/me')
   const html = personalReminderHtml(name, items, href)
@@ -116,6 +119,8 @@ async function runNightlyJob(cronAwareRequest: Request, method: string): Promise
     itemsQueued: Array.isArray(items) ? items.length : 0,
     sent: 1,
     itemsSource: usingPayloadItems ? 'payload' : 'database',
+    actionsScanned: pending?.actionsScanned ?? 0,
+    metricsScanned: pending?.metricsScanned ?? 0,
   }
 
   if (info.messageId) {
