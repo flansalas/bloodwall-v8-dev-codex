@@ -13,13 +13,14 @@ let usingEthereal = false
 const {
   SMTP_HOST,
   SMTP_PORT,
+  SMTP_SECURE,
   SMTP_USER,
   SMTP_PASS,
   FROM_EMAIL = "no-reply@bloodwall.local",
   FROM_NAME = "Bloodwall",
 } = process.env
 
-const smtpConfigured = Boolean(SMTP_HOST && SMTP_USER && SMTP_PASS)
+const smtpConfigured = Boolean(SMTP_HOST)
 
 async function createTransporter(): Promise<Transporter> {
   if (cachedTransporter) {
@@ -27,15 +28,22 @@ async function createTransporter(): Promise<Transporter> {
   }
 
   if (smtpConfigured) {
-    const port = Number.parseInt(SMTP_PORT ?? "587", 10)
+    const parsedPort = Number.parseInt(SMTP_PORT ?? "587", 10)
+    const port = Number.isNaN(parsedPort) ? 587 : parsedPort
+    const secure =
+      SMTP_SECURE === "true" || (SMTP_SECURE === undefined && port === 465)
+
     cachedTransporter = nodemailer.createTransport({
       host: SMTP_HOST,
       port,
-      secure: port === 465,
-      auth: {
-        user: SMTP_USER,
-        pass: SMTP_PASS,
-      },
+      secure,
+      auth:
+        SMTP_USER && SMTP_PASS
+          ? {
+              user: SMTP_USER,
+              pass: SMTP_PASS,
+            }
+          : undefined,
     })
     usingEthereal = false
     return cachedTransporter
@@ -57,13 +65,15 @@ async function createTransporter(): Promise<Transporter> {
 
 export async function sendEmail({ to, subject, html, text }: SendEmailPayload) {
   const transporter = await createTransporter()
+  const redirectAddress = process.env.EMAIL_REDIRECT?.trim()
+  const recipient = redirectAddress && redirectAddress.length > 0 ? redirectAddress : to
 
   const info = await transporter.sendMail({
     from: {
       name: FROM_NAME,
       address: FROM_EMAIL,
     },
-    to,
+    to: recipient,
     subject,
     text,
     html,
@@ -76,4 +86,3 @@ export async function sendEmail({ to, subject, html, text }: SendEmailPayload) {
     previewUrl,
   }
 }
-
