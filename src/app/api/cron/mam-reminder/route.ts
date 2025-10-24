@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { isReadOnly, withCronBypass } from '@/lib/runtimeFlags'
+import { sendEmail } from '@/lib/mailer'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +27,9 @@ const unauthorized = () =>
 
 const forbidden = () =>
   NextResponse.json({ ok: false, error: 'forbidden' }, { status: 403 })
+
+const cronReadOnlyResponse = () =>
+  NextResponse.json({ ok: false, error: 'read_only' }, { status: 403 })
 
 const readOnlyResponse = () =>
   NextResponse.json(
@@ -70,10 +74,12 @@ function prepareRequestWithCronSecret(request: NextRequest): Request {
 
 type MamSummary = {
   method: string
-  to: string
+  recipients: string[]
   sent: number
   messageId?: string
   previewUrl?: string
+  companyName: string
+  ctaHref: string
 }
 
 async function runMamReminder(request: Request, method: string): Promise<MamSummary> {
@@ -86,30 +92,28 @@ async function runMamReminder(request: Request, method: string): Promise<MamSumm
   const companyName =
     typeof body?.companyName === 'string' && body.companyName.trim() ? body.companyName : 'Bloodwall'
 
-  const base = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-  const ctaHref = `${base}/`
+  const requestUrl = new URL(request.url)
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${requestUrl.protocol}//${requestUrl.host}`
+  const ctaHref = `${baseUrl}/mam`
   const html = mamReminderHtml(companyName, ctaHref)
 
   const to = process.env.EMAIL_REDIRECT || 'flansalas@yahoo.com'
-  const fromEmail = process.env.FROM_EMAIL || 'no-reply@bloodwall.local'
-  const fromName = process.env.FROM_NAME || 'Bloodwall'
 
-  const { sendMail } = await import('@/lib/mailer')
-  const result = await sendMail({
+  const info = await sendEmail({
     to,
     subject: `[Bloodwall] MAM Reminder — ${companyName}`,
     html,
     text: `Weekly review is coming up. Open your dashboard: ${ctaHref}`,
-    fromEmail,
-    fromName,
   })
 
   return {
     method,
-    to,
+    recipients: [to],
     sent: 1,
-    messageId: result.messageId,
-    previewUrl: result.previewUrl,
+    messageId: info.messageId,
+    previewUrl: info.previewUrl,
+    companyName,
+    ctaHref,
   }
 }
 
@@ -129,7 +133,7 @@ async function processMamReminder(request: NextRequest) {
       return NextResponse.json(result)
     } catch (error) {
       if (error instanceof Error && error.message === '__READ_ONLY__') {
-        return forbidden()
+        return cronReadOnlyResponse()
       }
       console.error('[mam-reminder] job failed', error)
       return internalError()
