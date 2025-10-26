@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { isReadOnly, withCronBypass } from '@/lib/runtimeFlags'
+import { alreadySentToday, recordSent } from '@/lib/cronIdempotency'
 import { sendEmail } from '@/lib/mailer'
+import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,6 +82,9 @@ type MamSummary = {
   previewUrl?: string
   companyName: string
   ctaHref: string
+  skipped?: boolean
+  skippedCount?: number
+  reason?: string
 }
 
 async function runMamReminder(request: Request, method: string): Promise<MamSummary> {
@@ -98,22 +103,62 @@ async function runMamReminder(request: Request, method: string): Promise<MamSumm
   const html = mamReminderHtml(companyName, ctaHref)
 
   const to = process.env.EMAIL_REDIRECT || 'flansalas@yahoo.com'
+  const recipients = [to]
 
-  const info = await sendEmail({
-    to,
-    subject: `[Bloodwall] MAM Reminder — ${companyName}`,
-    html,
-    text: `Weekly review is coming up. Open your dashboard: ${ctaHref}`,
-  })
+  const sendList: string[] = []
+  const skippedRecipients: string[] = []
+
+  for (const recipient of recipients) {
+    if (await alreadySentToday(prisma, 'mam-reminder', recipient)) {
+      console.log(
+        `[mam-reminder] idempotent-skip recipient=${recipient} reason=already-sent-today`
+      )
+      skippedRecipients.push(recipient)
+      continue
+    }
+    sendList.push(recipient)
+  }
+
+  if (sendList.length === 0) {
+    return {
+      method,
+      recipients,
+      sent: 0,
+      companyName,
+      ctaHref,
+      skipped: true,
+      skippedCount: skippedRecipients.length,
+      reason: 'already-sent-today',
+    }
+  }
+
+  let messageId: string | undefined
+  let previewUrl: string | undefined
+
+  for (const recipient of sendList) {
+    const info = await sendEmail({
+      to: recipient,
+      subject: `[Bloodwall] MAM Reminder — ${companyName}`,
+      html,
+      text: `Weekly review is coming up. Open your dashboard: ${ctaHref}`,
+    })
+
+    await recordSent(prisma, 'mam-reminder', recipient, info.messageId)
+
+    messageId = info.messageId ?? messageId
+    previewUrl = info.previewUrl ?? previewUrl
+  }
 
   return {
     method,
-    recipients: [to],
-    sent: 1,
-    messageId: info.messageId,
-    previewUrl: info.previewUrl,
+    recipients,
+    sent: sendList.length,
+    messageId,
+    previewUrl,
     companyName,
     ctaHref,
+    skipped: skippedRecipients.length > 0 ? true : undefined,
+    skippedCount: skippedRecipients.length > 0 ? skippedRecipients.length : undefined,
   }
 }
 

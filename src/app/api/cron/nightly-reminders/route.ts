@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { isReadOnly, withCronBypass } from '@/lib/runtimeFlags'
+import { alreadySentToday, recordSent } from '@/lib/cronIdempotency'
 import { sendEmail } from '@/lib/mailer'
 import { magicLinkFor } from '@/lib/magic'
 import { personalReminderHtml } from '@/templates/reminders'
 import { getPendingForEmail } from '@/lib/pending'
+import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
@@ -75,6 +77,9 @@ type ReminderSummary = {
   itemsSource: 'payload' | 'database'
   actionsScanned: number
   metricsScanned: number
+  skipped?: boolean
+  skippedCount?: number
+  reason?: string
 }
 
 async function runNightlyJob(cronAwareRequest: Request, method: string): Promise<ReminderSummary> {
@@ -101,6 +106,24 @@ async function runNightlyJob(cronAwareRequest: Request, method: string): Promise
   const usingPayloadItems = Array.isArray(body?.items)
   const pending = usingPayloadItems ? null : await getPendingForEmail(to)
   const items = usingPayloadItems ? (body.items as unknown[]) : pending?.items ?? []
+
+  if (await alreadySentToday(prisma, 'nightly-reminders', to)) {
+    console.log(
+      `[nightly-reminders] idempotent-skip recipient=${to} reason=already-sent-today`
+    )
+    return {
+      method,
+      recipient: to,
+      itemsQueued: Array.isArray(items) ? items.length : 0,
+      sent: 0,
+      itemsSource: usingPayloadItems ? 'payload' : 'database',
+      actionsScanned: pending?.actionsScanned ?? 0,
+      metricsScanned: pending?.metricsScanned ?? 0,
+      skipped: true,
+      skippedCount: 1,
+      reason: 'already-sent-today',
+    }
+  }
 
   const href = magicLinkFor(to, '/me')
   const html = personalReminderHtml(name, items, href)
@@ -129,6 +152,8 @@ async function runNightlyJob(cronAwareRequest: Request, method: string): Promise
   if (info.previewUrl) {
     summary.previewUrl = info.previewUrl
   }
+
+  await recordSent(prisma, 'nightly-reminders', to, info.messageId)
 
   return summary
 }
