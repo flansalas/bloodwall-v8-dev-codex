@@ -137,3 +137,14 @@ model CronMailSend {
   @@unique([job, recipient, dayKey])
   @@index([dayKey])
 }
+
+model MailSend {
+  id        Int      @id @default(autoincrement())
+  job       String
+  email     String
+  dateKey   String
+  messageId String?
+  createdAt DateTime @default(now())
+
+  @@unique([job, email, dateKey], name: "mail_once_per_day")
+}

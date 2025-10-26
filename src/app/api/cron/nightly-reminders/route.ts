@@ -1,6 +1,6 @@
+import { Prisma } from '@prisma/client'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isReadOnly, withCronBypass } from '@/lib/runtimeFlags'
-import { acquireSendLock } from '@/lib/cronIdempotency'
 import { sendEmail } from '@/lib/mailer'
 import { magicLinkFor } from '@/lib/magic'
 import { personalReminderHtml } from '@/templates/reminders'
@@ -78,6 +78,7 @@ type ReminderSummary = {
   actionsScanned: number
   metricsScanned: number
   skipped?: boolean
+  dateKey?: string
   reason?: string
 }
 
@@ -106,55 +107,94 @@ async function runNightlyJob(cronAwareRequest: Request, method: string): Promise
   const pending = usingPayloadItems ? null : await getPendingForEmail(to)
   const items = usingPayloadItems ? (body.items as unknown[]) : pending?.items ?? []
 
-  const lock = await acquireSendLock(prisma, 'nightly-reminders', to)
-  if (!lock.ok) {
-    console.log(
-      '[nightly-reminders] idempotent-skip recipient=%s reason=%s',
-      to,
-      'already-sent-today'
-    )
-    return {
-      method,
-      recipient: to,
-      itemsQueued: Array.isArray(items) ? items.length : 0,
-      sent: 0,
-      itemsSource: usingPayloadItems ? 'payload' : 'database',
-      actionsScanned: pending?.actionsScanned ?? 0,
-      metricsScanned: pending?.metricsScanned ?? 0,
-      skipped: true,
-      reason: 'already-sent-today',
+  const job = 'nightly-reminders'
+  const url = new URL(cronAwareRequest.url)
+  const force = url.searchParams.get('force') === '1'
+  const dateKey = new Date().toISOString().slice(0, 10)
+  const email = to
+  let mailSendCreated = false
+
+  if (!force) {
+    try {
+      await prisma.mailSend.create({
+        data: {
+          job,
+          email,
+          dateKey,
+        },
+      })
+      mailSendCreated = true
+    } catch (error) {
+      if (
+        (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') ||
+        ((error as { code?: string } | null)?.code === 'P2002')
+      ) {
+        console.log(`[nightly-reminders] idempotent-skip email=${email} dateKey=${dateKey}`)
+        return {
+          method,
+          recipient: email,
+          itemsQueued: Array.isArray(items) ? items.length : 0,
+          sent: 0,
+          itemsSource: usingPayloadItems ? 'payload' : 'database',
+          actionsScanned: pending?.actionsScanned ?? 0,
+          metricsScanned: pending?.metricsScanned ?? 0,
+          skipped: true,
+          dateKey,
+          reason: 'already-sent-today',
+        }
+      }
+      throw error
     }
   }
 
-  const href = magicLinkFor(to, '/me')
-  const html = personalReminderHtml(name, items, href)
+  const uniqueTarget = { mail_once_per_day: { job, email, dateKey } }
 
-  const info = await sendEmail({
-    to,
-    subject: `[Bloodwall] Quick update before MAM`,
-    html,
-    text: 'Please update your UDEs before MAM.',
-  })
+  try {
+    const href = magicLinkFor(email, '/me')
+    const html = personalReminderHtml(name, items, href)
 
-  const summary: ReminderSummary = {
-    method,
-    recipient: to,
-    itemsQueued: Array.isArray(items) ? items.length : 0,
-    sent: 1,
-    itemsSource: usingPayloadItems ? 'payload' : 'database',
-    actionsScanned: pending?.actionsScanned ?? 0,
-    metricsScanned: pending?.metricsScanned ?? 0,
+    const info = await sendEmail({
+      to: email,
+      subject: `[Bloodwall] Quick update before MAM`,
+      html,
+      text: 'Please update your UDEs before MAM.',
+    })
+
+    if (!force && mailSendCreated) {
+      await prisma.mailSend.update({
+        where: uniqueTarget,
+        data: { messageId: info.messageId ?? null },
+      })
+    }
+
+    const summary: ReminderSummary = {
+      method,
+      recipient: email,
+      itemsQueued: Array.isArray(items) ? items.length : 0,
+      sent: 1,
+      itemsSource: usingPayloadItems ? 'payload' : 'database',
+      actionsScanned: pending?.actionsScanned ?? 0,
+      metricsScanned: pending?.metricsScanned ?? 0,
+      dateKey,
+    }
+
+    if (info.messageId) {
+      summary.messageId = info.messageId
+    }
+
+    if (info.previewUrl) {
+      summary.previewUrl = info.previewUrl
+    }
+
+    return summary
+  } catch (error) {
+    if (!force && mailSendCreated) {
+      await prisma.mailSend
+        .delete({ where: uniqueTarget })
+        .catch(() => {})
+    }
+    throw error
   }
-
-  if (info.messageId) {
-    summary.messageId = info.messageId
-  }
-
-  if (info.previewUrl) {
-    summary.previewUrl = info.previewUrl
-  }
-
-  return summary
 }
 
 async function processNightlyReminders(request: NextRequest) {

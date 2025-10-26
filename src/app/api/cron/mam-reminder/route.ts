@@ -1,6 +1,6 @@
+import { Prisma } from '@prisma/client'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isReadOnly, withCronBypass } from '@/lib/runtimeFlags'
-import { acquireSendLock } from '@/lib/cronIdempotency'
 import { sendEmail } from '@/lib/mailer'
 import { prisma } from '@/lib/prisma'
 
@@ -85,6 +85,7 @@ type MamSummary = {
   skipped?: boolean
   skippedCount?: number
   reason?: string
+  dateKey?: string
 }
 
 async function runMamReminder(request: Request, method: string): Promise<MamSummary> {
@@ -105,61 +106,85 @@ async function runMamReminder(request: Request, method: string): Promise<MamSumm
   const to = process.env.EMAIL_REDIRECT || 'flansalas@yahoo.com'
   const recipients = [to]
 
-  const toSend: string[] = []
-  let skippedCount = 0
+  const job = 'mam-reminder'
+  const url = new URL(request.url)
+  const force = url.searchParams.get('force') === '1'
+  const dateKey = new Date().toISOString().slice(0, 10)
+  const email = to
+  let mailSendCreated = false
 
-  for (const recipient of recipients) {
-    const lock = await acquireSendLock(prisma, 'mam-reminder', recipient)
-    if (lock.ok) {
-      toSend.push(recipient)
-    } else {
-      skippedCount += 1
-      console.log(
-        '[mam-reminder] idempotent-skip recipient=%s reason=%s',
-        recipient,
-        'already-sent-today'
-      )
+  if (!force) {
+    try {
+      await prisma.mailSend.create({
+        data: {
+          job,
+          email,
+          dateKey,
+        },
+      })
+      mailSendCreated = true
+    } catch (error) {
+      if (
+        (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') ||
+        ((error as { code?: string } | null)?.code === 'P2002')
+      ) {
+        console.log(`[mam-reminder] idempotent-skip email=${email} dateKey=${dateKey}`)
+        return {
+          method,
+          recipients,
+          sent: 0,
+          companyName,
+          ctaHref,
+          skipped: true,
+          skippedCount: recipients.length,
+          reason: 'already-sent-today',
+          dateKey,
+        }
+      }
+      throw error
     }
   }
 
-  if (toSend.length === 0) {
-    return {
-      method,
-      recipients,
-      sent: 0,
-      companyName,
-      ctaHref,
-      skipped: true,
-      skippedCount,
-      reason: 'already-sent-today',
-    }
-  }
+  const uniqueTarget = { mail_once_per_day: { job, email, dateKey } }
 
-  let messageId: string | undefined
-  let previewUrl: string | undefined
-
-  for (const recipient of toSend) {
+  try {
     const info = await sendEmail({
-      to: recipient,
+      to: email,
       subject: `[Bloodwall] MAM Reminder — ${companyName}`,
       html,
       text: `Weekly review is coming up. Open your dashboard: ${ctaHref}`,
     })
 
-    messageId = info.messageId ?? messageId
-    previewUrl = info.previewUrl ?? previewUrl
-  }
+    if (!force && mailSendCreated) {
+      await prisma.mailSend.update({
+        where: uniqueTarget,
+        data: { messageId: info.messageId ?? null },
+      })
+    }
 
-  return {
-    method,
-    recipients,
-    sent: toSend.length,
-    messageId,
-    previewUrl,
-    companyName,
-    ctaHref,
-    skipped: skippedCount > 0 ? true : undefined,
-    skippedCount: skippedCount > 0 ? skippedCount : undefined,
+    const summary: MamSummary = {
+      method,
+      recipients,
+      sent: 1,
+      companyName,
+      ctaHref,
+      dateKey,
+    }
+    if (info.messageId) {
+      summary.messageId = info.messageId
+    }
+    if (info.previewUrl) {
+      summary.previewUrl = info.previewUrl
+    }
+
+    return summary
+  } catch (error) {
+    if (!force && mailSendCreated) {
+      await prisma.mailSend
+        .delete({ where: uniqueTarget })
+        .catch(() => {})
+    }
+    throw error
   }
 }
 
