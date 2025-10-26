@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { isReadOnly, withCronBypass } from '@/lib/runtimeFlags'
-import { alreadySentToday, recordSent } from '@/lib/cronIdempotency'
+import { acquireSendLock } from '@/lib/cronIdempotency'
 import { sendEmail } from '@/lib/mailer'
 import { prisma } from '@/lib/prisma'
 
@@ -105,21 +105,24 @@ async function runMamReminder(request: Request, method: string): Promise<MamSumm
   const to = process.env.EMAIL_REDIRECT || 'flansalas@yahoo.com'
   const recipients = [to]
 
-  const sendList: string[] = []
-  const skippedRecipients: string[] = []
+  const toSend: string[] = []
+  let skippedCount = 0
 
   for (const recipient of recipients) {
-    if (await alreadySentToday(prisma, 'mam-reminder', recipient)) {
+    const lock = await acquireSendLock(prisma, 'mam-reminder', recipient)
+    if (lock.ok) {
+      toSend.push(recipient)
+    } else {
+      skippedCount += 1
       console.log(
-        `[mam-reminder] idempotent-skip recipient=${recipient} reason=already-sent-today`
+        '[mam-reminder] idempotent-skip recipient=%s reason=%s',
+        recipient,
+        'already-sent-today'
       )
-      skippedRecipients.push(recipient)
-      continue
     }
-    sendList.push(recipient)
   }
 
-  if (sendList.length === 0) {
+  if (toSend.length === 0) {
     return {
       method,
       recipients,
@@ -127,7 +130,7 @@ async function runMamReminder(request: Request, method: string): Promise<MamSumm
       companyName,
       ctaHref,
       skipped: true,
-      skippedCount: skippedRecipients.length,
+      skippedCount,
       reason: 'already-sent-today',
     }
   }
@@ -135,15 +138,13 @@ async function runMamReminder(request: Request, method: string): Promise<MamSumm
   let messageId: string | undefined
   let previewUrl: string | undefined
 
-  for (const recipient of sendList) {
+  for (const recipient of toSend) {
     const info = await sendEmail({
       to: recipient,
       subject: `[Bloodwall] MAM Reminder — ${companyName}`,
       html,
       text: `Weekly review is coming up. Open your dashboard: ${ctaHref}`,
     })
-
-    await recordSent(prisma, 'mam-reminder', recipient, info.messageId)
 
     messageId = info.messageId ?? messageId
     previewUrl = info.previewUrl ?? previewUrl
@@ -152,13 +153,13 @@ async function runMamReminder(request: Request, method: string): Promise<MamSumm
   return {
     method,
     recipients,
-    sent: sendList.length,
+    sent: toSend.length,
     messageId,
     previewUrl,
     companyName,
     ctaHref,
-    skipped: skippedRecipients.length > 0 ? true : undefined,
-    skippedCount: skippedRecipients.length > 0 ? skippedRecipients.length : undefined,
+    skipped: skippedCount > 0 ? true : undefined,
+    skippedCount: skippedCount > 0 ? skippedCount : undefined,
   }
 }
 

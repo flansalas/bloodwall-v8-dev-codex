@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { isReadOnly, withCronBypass } from '@/lib/runtimeFlags'
-import { alreadySentToday, recordSent } from '@/lib/cronIdempotency'
+import { acquireSendLock } from '@/lib/cronIdempotency'
 import { sendEmail } from '@/lib/mailer'
 import { magicLinkFor } from '@/lib/magic'
 import { personalReminderHtml } from '@/templates/reminders'
@@ -78,7 +78,6 @@ type ReminderSummary = {
   actionsScanned: number
   metricsScanned: number
   skipped?: boolean
-  skippedCount?: number
   reason?: string
 }
 
@@ -107,9 +106,12 @@ async function runNightlyJob(cronAwareRequest: Request, method: string): Promise
   const pending = usingPayloadItems ? null : await getPendingForEmail(to)
   const items = usingPayloadItems ? (body.items as unknown[]) : pending?.items ?? []
 
-  if (await alreadySentToday(prisma, 'nightly-reminders', to)) {
+  const lock = await acquireSendLock(prisma, 'nightly-reminders', to)
+  if (!lock.ok) {
     console.log(
-      `[nightly-reminders] idempotent-skip recipient=${to} reason=already-sent-today`
+      '[nightly-reminders] idempotent-skip recipient=%s reason=%s',
+      to,
+      'already-sent-today'
     )
     return {
       method,
@@ -120,7 +122,6 @@ async function runNightlyJob(cronAwareRequest: Request, method: string): Promise
       actionsScanned: pending?.actionsScanned ?? 0,
       metricsScanned: pending?.metricsScanned ?? 0,
       skipped: true,
-      skippedCount: 1,
       reason: 'already-sent-today',
     }
   }
@@ -152,8 +153,6 @@ async function runNightlyJob(cronAwareRequest: Request, method: string): Promise
   if (info.previewUrl) {
     summary.previewUrl = info.previewUrl
   }
-
-  await recordSent(prisma, 'nightly-reminders', to, info.messageId)
 
   return summary
 }

@@ -126,3 +126,14 @@ model ActivityLog {
   udeId     Int
   ude       UDE      @relation(fields: [udeId], references: [id], onDelete: Cascade)
 }
+
+model CronMailSend {
+  id        String   @id @default(cuid())
+  job       String   // 'nightly-reminders' | 'mam-reminder'
+  recipient String   // normalized lower-case email
+  dayKey    String   // UTC YYYY-MM-DD
+  createdAt DateTime @default(now())
+
+  @@unique([job, recipient, dayKey])
+  @@index([dayKey])
+}
