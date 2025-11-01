@@ -1,8 +1,11 @@
-// src/app/api/health/route.ts
-import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { NextResponse } from 'next/server';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const companies = await prisma.company.count()
-  return NextResponse.json({ ok: true, companies })
+  return NextResponse.json({
+    ok: true,
+    env: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown',
+    timestamp: new Date().toISOString(),
+  });
 }
