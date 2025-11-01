@@ -14,9 +14,7 @@ export async function GET(req: Request) {
   }
   return NextResponse.json({
     ok: true,
-    flags: {
-      DEV_TEST_EMAIL: process.env.DEV_TEST_EMAIL ?? 'undefined',
-    },
+    env: process.env.VERCEL_ENV || process.env.NODE_ENV || 'unknown',
     timestamp: new Date().toISOString(),
   });
 }
