@@ -3,8 +3,10 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { isReadOnly, withCronBypass } from '@/lib/runtimeFlags'
 import { sendEmail } from '@/lib/mailer'
 import { prisma } from '@/lib/prisma'
+import { isCronAuthorized } from '@/lib/cronAuth'
 
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
 function mamReminderHtml(companyName: string, ctaHref: string) {
   return `
@@ -232,8 +234,11 @@ async function handle(request: NextRequest) {
   return processMamReminder(request)
 }
 
-export async function GET(request: NextRequest) {
-  return handle(request)
+export async function GET(req: NextRequest) {
+  if (!isCronAuthorized(req)) {
+    return new Response(JSON.stringify({ ok:false, error:'unauthorized' }), { status: 401 });
+  }
+  return handle(req)
 }
 
 export async function POST(request: NextRequest) {

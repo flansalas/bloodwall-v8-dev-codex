@@ -1,14 +1,18 @@
-export function isCronAuthed(req: Request) {
-  return req.headers.get("x-cron-secret") === process.env.CRON_SECRET;
-}
+export function isCronAuthorized(req: Request): boolean {
+  const ua = req.headers.get('user-agent') || '';
+  const headerSecret =
+    req.headers.get('x-cron-secret') ||
+    (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
 
-export function requireCronAuth(req: Request) {
-  if (!isCronAuthed(req)) {
-    return new Response(JSON.stringify({ error: "forbidden" }), {
-      status: 403,
-      headers: { "content-type": "application/json" },
-    });
+  const envSecret = process.env.CRON_SECRET;
+
+  // If a secret is configured, accept either a matching header OR (for now) Vercel cron UA.
+  if (envSecret) {
+    return headerSecret === envSecret || ua.toLowerCase().includes('vercel-cron');
   }
-
-  return null;
+  // Fallback: allow only Vercel cron user-agent in prod, everything in non-prod.
+  if (process.env.NODE_ENV === 'production') {
+    return ua.toLowerCase().includes('vercel-cron');
+  }
+  return true;
 }
