@@ -2,16 +2,19 @@ import { NextResponse } from 'next/server'
 import { isReadOnly } from '@/lib/runtimeFlags'
 import { addAction } from '@/lib/udeStore'
 import { ActionStatus } from '@prisma/client'
+import { requireAdmin } from '../_lib/adminAuth'
 
-export async function POST(request: Request) {
-  if (isReadOnly(request)) {
+export async function POST(req: Request) {
+  const denied = requireAdmin(req as any);
+  if (denied) return denied;
+  if (isReadOnly(req)) {
     return NextResponse.json(
       { ok: false, error: 'read_only' },
       { status: 403 }
     )
   }
   try {
-    const body = await request.json()
+    const body = await req.json()
     const udeId = Number.parseInt(body.udeId, 10)
     const ownerId = Number.parseInt(body.ownerId, 10)
 

@@ -1,16 +1,19 @@
 import { NextResponse } from 'next/server'
 import { isReadOnly } from '@/src/lib/runtimeFlags'
 import { addMetric } from '@/lib/udeStore'
+import { requireAdmin } from '../_lib/adminAuth'
 
-export async function POST(request: Request) {
-  if (isReadOnly(request)) {
+export async function POST(req: Request) {
+  const denied = requireAdmin(req as any);
+  if (denied) return denied;
+  if (isReadOnly(req)) {
     return NextResponse.json(
       { error: 'Read-only mode: writes are disabled on this deployment.' },
       { status: 403 }
     )
   }
   try {
-    const body = await request.json()
+    const body = await req.json()
     const udeId = Number.parseInt(body.udeId, 10)
     if (!Number.isInteger(udeId)) {
       return NextResponse.json({ error: 'udeId is required' }, { status: 400 })

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { isReadOnly } from '@/src/lib/runtimeFlags'
 import { forwardStatus } from '@/lib/udeStore'
 import { UDEStatus } from '@prisma/client'
+import { requireAdmin } from '../../../_lib/adminAuth'
 
 const parseId = (value: string) => {
   const id = Number.parseInt(value, 10)
@@ -11,8 +12,10 @@ const parseId = (value: string) => {
   return id
 }
 
-export async function POST(request: Request, { params }: { params: { id: string } }) {
-  if (isReadOnly(request)) {
+export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const denied = requireAdmin(req as any);
+  if (denied) return denied;
+  if (isReadOnly(req)) {
     return NextResponse.json(
       { error: 'Read-only mode: writes are disabled on this deployment.' },
       { status: 403 }
@@ -20,7 +23,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
   try {
     const id = parseId(params.id)
-    const body = await request.json()
+    const body = await req.json()
 
     if (!body.status || !Object.values(UDEStatus).includes(body.status)) {
       return NextResponse.json({ error: 'Valid status is required' }, { status: 400 })

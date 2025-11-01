@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { isReadOnly } from "@/src/lib/runtimeFlags"
 import { updateAction } from '@/lib/udeStore'
 import { ActionStatus } from '@prisma/client'
+import { requireAdmin } from '../../_lib/adminAuth'
 
 const parseId = (value: string) => {
   const id = Number.parseInt(value, 10)
@@ -11,8 +12,10 @@ const parseId = (value: string) => {
   return id
 }
 
-export async function PATCH(request: Request, ctx: any) {
-  if (isReadOnly(request)) {
+export async function PATCH(req: Request, ctx: any) {
+  const denied = requireAdmin(req as any);
+  if (denied) return denied;
+  if (isReadOnly(req)) {
     return NextResponse.json(
       { error: 'Read-only mode: writes are disabled on this deployment.' },
       { status: 403 }
@@ -21,7 +24,7 @@ export async function PATCH(request: Request, ctx: any) {
   const id = ctx?.params?.id as string
   try {
     const parsedId = parseId(id)
-    const body = await request.json()
+    const body = await req.json()
 
     const payload: Record<string, unknown> = {}
     if (typeof body.text === 'string') payload.text = body.text

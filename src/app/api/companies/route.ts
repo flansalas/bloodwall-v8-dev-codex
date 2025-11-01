@@ -3,6 +3,7 @@ import { isReadOnly } from '@/src/lib/runtimeFlags'
 import { Role } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getCompanyProfile, resolveCompanyId } from '@/lib/companyService'
+import { requireAdmin } from '../_lib/adminAuth'
 
 const roleFromInput = (value: unknown) => {
   if (typeof value !== 'string') return Role.COLLAB
@@ -24,15 +25,17 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: Request) {
-  if (isReadOnly(request)) {
+export async function POST(req: Request) {
+  const denied = requireAdmin(req as any);
+  if (denied) return denied;
+  if (isReadOnly(req)) {
     return NextResponse.json(
       { error: 'Read-only mode: writes are disabled on this deployment.' },
       { status: 403 }
     )
   }
   try {
-    const body = await request.json()
+    const body = await req.json()
     const company = await prisma.company.create({
       data: {
         name: String(body.name ?? 'Untitled Company'),
@@ -90,15 +93,17 @@ export async function POST(request: Request) {
   }
 }
 
-export async function PATCH(request: Request) {
-  if (isReadOnly(request)) {
+export async function PATCH(req: Request) {
+  const denied = requireAdmin(req as any);
+  if (denied) return denied;
+  if (isReadOnly(req)) {
     return NextResponse.json(
       { error: 'Read-only mode: writes are disabled on this deployment.' },
       { status: 403 }
     )
   }
   try {
-    const body = await request.json()
+    const body = await req.json()
     const companyId = await resolveCompanyId(body.companyId)
 
     await prisma.company.update({

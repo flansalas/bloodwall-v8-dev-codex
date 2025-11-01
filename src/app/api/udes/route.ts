@@ -3,6 +3,7 @@ import { isReadOnly } from '@/lib/runtimeFlags'
 import { createUDE, getAllUDEs } from '@/lib/udeStore'
 import { resolveCompanyId } from '@/lib/companyService'
 import { UDEStatus } from '@prisma/client'
+import { requireAdmin } from '../_lib/adminAuth'
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,15 +17,17 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: Request) {
-  if (isReadOnly(request)) {
+export async function POST(req: Request) {
+  const denied = requireAdmin(req as any);
+  if (denied) return denied;
+  if (isReadOnly(req)) {
     return NextResponse.json(
       { ok: false, error: 'read_only' },
       { status: 403 }
     )
   }
   try {
-    const body = await request.json()
+    const body = await req.json()
     const companyId = await resolveCompanyId(body.companyId)
 
     if (!body.title || typeof body.title !== 'string') {
